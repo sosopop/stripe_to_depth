@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
+import torch.nn.functional as F
+import random
 
 class DepthEstimationDataset(Dataset):
     def __init__(self, root_dir):
@@ -25,12 +27,53 @@ class DepthEstimationDataset(Dataset):
         # 读取深度图
         z_data = pd.read_csv(os.path.join(data_dir, 'z.csv'), header=None)
         depth_image = torch.from_numpy(z_data.values).unsqueeze(0).float()  # 加上通道维度
+        
+        # depth_gt 归一化到 -0.4~-0.3 之间
+        # depth_image = depth_image.clamp(-0.38, -0.3)
+        # depth_image = (depth_image + 0.4) / 0.1
 
         # 读取掩码图
         mask_data = pd.read_csv(os.path.join(data_dir, 'mask.csv'), header=None)
         mask_image = torch.from_numpy(mask_data.values).unsqueeze(0).float()
 
+        # 计算随机偏移量
+        # offset_y, offset_x = self.get_random_offset(image, 576, 576)
+        offset_y, offset_x = 0, 0
+
+        # 使用相同的偏移量填充 image、depth_image 和 mask_image
+        image = self.pad_to_size_with_offset(image, 576, 576, offset_y, offset_x)
+        depth_image = self.pad_to_size_with_offset(depth_image, 576, 576, offset_y, offset_x)
+        mask_image = self.pad_to_size_with_offset(mask_image, 576, 576, offset_y, offset_x)
+
         return image, depth_image, mask_image
+
+    def get_random_offset(self, tensor, target_height, target_width):
+        """
+        生成随机偏移量，确保不会溢出边界。
+        """
+        _, height, width = tensor.shape
+        pad_bottom = target_height - height
+        pad_right = target_width - width
+
+        # 生成随机偏移量，保证不会溢出
+        offset_y = random.randint(0, pad_bottom)
+        offset_x = random.randint(0, pad_right)
+
+        return offset_y, offset_x
+
+    def pad_to_size_with_offset(self, tensor, target_height, target_width, offset_y, offset_x):
+        """
+        将输入的 tensor 填充到目标尺寸 target_height x target_width，
+        并使用指定的偏移量，将图像随机偏移到不同位置，且不溢出。
+        """
+        _, height, width = tensor.shape
+        pad_bottom = target_height - height
+        pad_right = target_width - width
+
+        # 使用传入的偏移量来确定填充区域
+        padding = (offset_x, pad_right - offset_x, offset_y, pad_bottom - offset_y)  # (left, right, top, bottom)
+        return F.pad(tensor, padding, "constant", 0)  # 用0填充
+
 
 if __name__ == '__main__':
     # 创建数据集和数据加载器

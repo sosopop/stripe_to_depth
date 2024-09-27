@@ -1,10 +1,12 @@
 import torch
+import os
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from datasets import DepthEstimationDataset
 from model_unet import UNet
-from utils import visualize_sample, save_model_checkpoint
+from utils import visualize_sample, save_model_checkpoint, load_model_checkpoint
+# import piq
 
 # 定义训练函数
 def train_model(model, dataloader, criterion_depth, criterion_mask, optimizer, num_epochs=25, device='cuda'):
@@ -19,7 +21,7 @@ def train_model(model, dataloader, criterion_depth, criterion_mask, optimizer, n
             image = image.to(device)
             depth_gt = depth_gt.to(device)
             mask_gt = mask_gt.to(device)
-
+            
             # 前向传播
             optimizer.zero_grad()
             output = model(image)
@@ -46,7 +48,7 @@ def train_model(model, dataloader, criterion_depth, criterion_mask, optimizer, n
             running_loss += loss.item()
 
         epoch_loss = running_loss / len(dataloader)
-        print(f'Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}')
+        print(f'Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.10f}')
 
         # 每 20 轮可视化并保存图像
         if (epoch + 1) % 100 == 0:
@@ -71,6 +73,9 @@ def train_model(model, dataloader, criterion_depth, criterion_mask, optimizer, n
             
     return model
 
+def log_cosh_loss(pred, target):
+    diff = pred - target
+    return torch.mean(torch.log(torch.cosh(diff)))
 
 if __name__ == '__main__':
     # 加载数据集
@@ -79,13 +84,27 @@ if __name__ == '__main__':
 
     # 初始化模型
     model = UNet(input_channels=1, output_channels=2, complexity=8)
-
+    
+    # 获取最新的checkpoint文件
+    checkpoint_dir = 'checkpoints'
+    checkpoint_files = [f for f in os.listdir(checkpoint_dir) if f.endswith('.pth')]
+    if checkpoint_files:
+        latest_checkpoint = max(checkpoint_files, key=lambda x: int(x.split('_')[2].split('.')[0]))
+        checkpoint_path = os.path.join(checkpoint_dir, latest_checkpoint)
+        if os.path.exists(checkpoint_path):
+            print(f"Found checkpoint file: {checkpoint_path}")
+            # 加载checkpoint
+            model = load_model_checkpoint(model, checkpoint_path)
+            print(f"Loaded checkpoint from {checkpoint_path}")
+    
     # 定义损失函数和优化器
     criterion_depth = nn.MSELoss()  # 深度图损失
+    # criterion_depth = log_cosh_loss  # 深度图损失
+    # criterion_depth = piq.SSIMLoss()
     criterion_mask = nn.BCEWithLogitsLoss()  # 掩码图损失
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
     # 训练模型
-    trained_model = train_model(model, dataloader, criterion_depth, criterion_mask, optimizer, num_epochs=10000)
+    trained_model = train_model(model, dataloader, criterion_depth, criterion_mask, optimizer, num_epochs=100000)
 
     # 保存模型
     torch.save(trained_model.state_dict(), 'depth_estimation_model.pth')

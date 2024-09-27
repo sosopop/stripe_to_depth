@@ -4,3 +4,5 @@ masked_grayscale_image.png
 *.pth
 visualizations/*
 readme.txt
+/*.png
+/*.csv

@@ -122,3 +122,20 @@ def save_model_checkpoint(model, epoch, save_dir='checkpoints'):
     # 保存模型
     torch.save(model.state_dict(), save_path)
     print(f"Model checkpoint saved to {save_path}")
+    
+def load_model_checkpoint(model, load_path):
+    """
+    加载模型检查点
+
+    参数:
+    - model: 要加载的模型实例
+    - load_path: 检查点的路径
+
+    返回:
+    - model: 加载了检查点的模型
+    """
+
+    # 加载模型状态字典
+    model.load_state_dict(torch.load(load_path))
+
+    return model
