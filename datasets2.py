@@ -26,12 +26,13 @@ class DepthEstimationDataset2(Dataset):
 
         # 读取条纹图像 (image)
         image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-        image = torch.from_numpy(image).unsqueeze(0).float()  # 转为 PyTorch Tensor，并添加通道维度
+        image = torch.from_numpy(image).unsqueeze(0).float() / 255.0  # 转为 PyTorch Tensor，并添加通道维度
 
         # 读取掩码图 (mask)
         mask_image = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-        mask_image = torch.from_numpy(mask_image).unsqueeze(0).float()  # 转换为 PyTorch Tensor
-
+        mask_image = torch.from_numpy(mask_image).unsqueeze(0).float()
+        mask_image[mask_image > 0] = 1.0
+        
         # 读取深度图 (z.tiff)
         depth_image = tiff.imread(depth_path)
         depth_image = torch.from_numpy(depth_image).unsqueeze(0).float()  # 转为 PyTorch Tensor，并添加通道维度
@@ -84,11 +85,6 @@ if __name__ == '__main__':
         image = image.squeeze(0).squeeze(0)
         depth_image = depth_image.squeeze(0).squeeze(0)
         mask_image = mask_image.squeeze(0).squeeze(0)
-
-        # 深度图归一化处理
-        # z_max = torch.max(depth_image)
-        # z_min = torch.min(depth_image)
-        # z_normalized_data = (depth_image - z_min) / (z_max - z_min)
 
         # 掩码处理后的深度图归一化
         masked_z = torch.where(mask_image > 0, depth_image, torch.nan)

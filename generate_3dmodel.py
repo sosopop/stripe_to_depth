@@ -396,9 +396,8 @@ def get_last_generated_index(output_dir):
     return max_index
 
 if __name__ == "__main__":
-    
     image_count = 10000  # Specify the number of images to generate
-    output_dir = "datasets/train"
+    output_dir = "datasets/train_tmp"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     begin_index = get_last_generated_index(output_dir) + 1  # 从上次生成的序号开始生成

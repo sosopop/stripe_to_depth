@@ -22,7 +22,7 @@ class DepthEstimationDataset(Dataset):
         # 读取图像
         image_path = os.path.join(data_dir, '1.png')
         image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-        image = torch.from_numpy(image).unsqueeze(0).float()  # 转换为 PyTorch Tensor，并加上通道维度
+        image = torch.from_numpy(image).unsqueeze(0).float() / 255.0  # 转换为 PyTorch Tensor，并加上通道维度
 
         # 读取深度图
         z_data = pd.read_csv(os.path.join(data_dir, 'z.csv'), header=None)

@@ -30,15 +30,21 @@ def visualize_sample(image, depth_pred, mask_pred, depth_gt, mask_gt, epoch, sav
     mask_gt = mask_gt > 0
 
     # 深度图归一化处理（预测）
-    z_pred_max = torch.max(depth_pred)
-    z_pred_min = torch.min(depth_pred)
-    z_pred_normalized = (depth_pred - z_pred_min) / (z_pred_max - z_pred_min)
+    # z_pred_max = torch.max(depth_pred)
+    # z_pred_min = torch.min(depth_pred)
+    # z_pred_normalized = (depth_pred - z_pred_min) / (z_pred_max - z_pred_min)
 
+    z_pred_normalized = torch.clamp(depth_pred, min=-1, max=0)
+    z_pred_normalized = z_pred_normalized + 1
+    
     # 深度图归一化处理（标注）
-    z_gt_max = torch.max(depth_gt)
-    z_gt_min = torch.min(depth_gt)
-    z_gt_normalized = (depth_gt - z_gt_min) / (z_gt_max - z_gt_min)
+    # z_gt_max = torch.max(depth_gt)
+    # z_gt_min = torch.min(depth_gt)
+    # z_gt_normalized = (depth_gt - z_gt_min) / (z_gt_max - z_gt_min)
 
+    z_gt_normalized = torch.clamp(depth_gt, min=-1, max=0)
+    z_gt_normalized = z_gt_normalized + 1
+    
     # 掩码处理后的深度图归一化（预测）
     masked_z_pred = torch.where(mask_pred == 1, depth_pred, torch.nan)
     z_mask_pred_data = masked_z_pred[~torch.isnan(masked_z_pred)]
@@ -46,6 +52,7 @@ def visualize_sample(image, depth_pred, mask_pred, depth_gt, mask_gt, epoch, sav
     z_mask_pred_min = torch.min(z_mask_pred_data)
     z_mask_pred_normalized = (masked_z_pred - z_mask_pred_min) / (z_mask_pred_max - z_mask_pred_min)
     z_mask_pred_normalized[torch.isnan(z_mask_pred_normalized)] = 0
+    
 
     # 掩码处理后的深度图归一化（标注）
     masked_z_gt = torch.where(mask_gt == 1, depth_gt, torch.nan)
@@ -54,6 +61,7 @@ def visualize_sample(image, depth_pred, mask_pred, depth_gt, mask_gt, epoch, sav
     z_mask_gt_min = torch.min(z_mask_gt_data)
     z_mask_gt_normalized = (masked_z_gt - z_mask_gt_min) / (z_mask_gt_max - z_mask_gt_min)
     z_mask_gt_normalized[torch.isnan(z_mask_gt_normalized)] = 0
+    
 
     # 使用matplotlib显示并保存图像
     fig, axes = plt.subplots(2, 4, figsize=(20, 10))

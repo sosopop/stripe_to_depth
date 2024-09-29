@@ -3,7 +3,7 @@ import os
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from datasets import DepthEstimationDataset
+from datasets2 import DepthEstimationDataset2 as DepthEstimationDataset
 from model_unet import UNet
 from utils import visualize_sample, save_model_checkpoint, load_model_checkpoint
 # import piq
@@ -51,7 +51,7 @@ def train_model(model, dataloader, criterion_depth, criterion_mask, optimizer, n
         print(f'Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.10f}')
 
         # 每 20 轮可视化并保存图像
-        if (epoch + 1) % 100 == 0:
+        if (epoch + 1) % 1 == 0:
             model.eval()  # 切换到评估模式
             with torch.no_grad():
                 for image, depth, mask in dataloader:
@@ -79,8 +79,10 @@ def log_cosh_loss(pred, target):
 
 if __name__ == '__main__':
     # 加载数据集
-    dataset = DepthEstimationDataset(root_dir='data')
-    dataloader = DataLoader(dataset, batch_size=5, shuffle=True)
+    dataset = DepthEstimationDataset(root_dir='datasets/train')
+    dataloader = DataLoader(dataset, batch_size=8, shuffle=True)
+    
+    print(f"Training set size: {len(dataset)}")
 
     # 初始化模型
     model = UNet(input_channels=1, output_channels=2, complexity=8)
