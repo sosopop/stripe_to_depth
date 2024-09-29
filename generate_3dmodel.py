@@ -4,6 +4,7 @@ from OpenGL.GL.shaders import compileProgram, compileShader
 import numpy as np
 import glm
 import cv2
+import os
 
 vertex_shader = """
 #version 330 core
@@ -94,6 +95,14 @@ void main()
 }
 """
 
+def save_rendered_image(width, height):
+    pixels = glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE)
+
+    # 将读取到的像素数据转换为 NumPy 数组，并按照行进行翻转
+    image = np.frombuffer(pixels, dtype=np.uint8).reshape(height, width, 3)
+    image = np.flipud(image)  # OpenGL 的坐标系是从左下角开始，需要上下翻转图像
+    return image
+
 def get_world_depth_buffer(view_matrix, projection_matrix, screen_width, screen_height, near, far):
     # 1. 读取深度缓冲区
     depth_buffer = np.zeros((screen_height, screen_width), dtype=np.float32)
@@ -133,6 +142,7 @@ def get_world_depth_buffer(view_matrix, projection_matrix, screen_width, screen_
             # 保存世界坐标系中的Z深度
             world_z_depth[y, x] = world_space_pos.z
 
+    world_z_depth = np.flipud(world_z_depth)  # OpenGL 的坐标系是从左下角开始，需要上下翻转图像
     # 5. 返回世界坐标系的Z深度矩阵
     return world_z_depth
 
@@ -216,61 +226,6 @@ def create_icosphere(subdivisions, radius=1.0, noise_amplitude=0.002):
 
     return vertices.flatten(), normals.flatten(), faces.flatten()
 
-
-def create_sphere(rows, cols, radius=1.0):
-    vertices = []
-    indices = []
-    
-    frequencies = np.random.uniform(4, 20, size=10)
-    phases = np.random.uniform(0, np.pi, size=10)
-
-    def noise_function(x, y, z):
-        noise = 0
-        for freq, phase in zip(frequencies, phases):
-            noise += np.sin(freq * x + phase) * np.sin(freq * y + phase) * np.sin(freq * z + phase)
-        return 0.005 * noise
-    
-    for i in range(rows + 1):
-        lat = np.pi * i / rows  # 纬度
-        for j in range(cols + 1):
-            lon = 2 * np.pi * j / cols  # 经度
-            x = np.sin(lat) * np.cos(lon)
-            y = np.cos(lat)
-            z = np.sin(lat) * np.sin(lon)
-            
-            noise = noise_function(x, y, z)
-            final_radius = radius + noise
-            
-            # 顶点
-            vertices.extend([final_radius * x, final_radius * y, final_radius * z])
-    
-    for i in range(rows):
-        for j in range(cols):
-            first = (i * (cols + 1)) + j
-            second = first + cols + 1
-            
-            indices.extend([first, second, first + 1])
-            indices.extend([second, second + 1, first + 1])
-    
-    vertices = np.array(vertices, dtype=np.float32).reshape(-1, 3)
-    indices = np.array(indices, dtype=np.uint32)
-    
-    # 计算法线
-    normals = np.zeros_like(vertices)
-    for i in range(0, len(indices), 3):
-        v1, v2, v3 = vertices[indices[i]], vertices[indices[i+1]], vertices[indices[i+2]]
-        normal = np.cross(v2 - v1, v3 - v1)
-        if np.linalg.norm(normal) == 0:
-            print("Warning: zero normal detected")
-        normals[indices[i]] += normal
-        normals[indices[i+1]] += normal
-        normals[indices[i+2]] += normal
-    
-    # 归一化新法线
-    normals = normals / np.linalg.norm(normals, axis=1, keepdims=True)
-    
-    return vertices.flatten(), normals.flatten(), indices
-
 def save_to_obj(filename, vertices, normals, indices):
     with open(filename, 'w') as f:
         # 写入顶点信息
@@ -285,7 +240,7 @@ def save_to_obj(filename, vertices, normals, indices):
         for i in range(0, len(indices), 3):
             f.write(f"f {indices[i] + 1}//{indices[i] + 1} {indices[i + 1] + 1}//{indices[i + 1] + 1} {indices[i + 2] + 1}//{indices[i + 2] + 1}\n")
 
-def main():
+def main(begin_index, image_count, output_dir):
     pygame.init()
     display = (576, 576)
     pygame.display.set_mode(display, pygame.OPENGL | pygame.DOUBLEBUF)
@@ -295,35 +250,12 @@ def main():
         compileShader(fragment_shader, GL_FRAGMENT_SHADER)
     )
     
-    # 创建球体的顶点、法线和索引
-    # rows, cols, radius = 300, 300, 0.1
-    # vertices, normals, indices = create_sphere(rows, cols, radius)
-    vertices, normals, indices = create_icosphere(6, 0.1)
-    # save_to_obj('sphere.obj', vertices, normals, indices)
-    
     # 创建 VAO 和 VBO
     VAO = glGenVertexArrays(1)
     VBO = glGenBuffers(1)
     EBO = glGenBuffers(1)
 
     glBindVertexArray(VAO)
-
-    glBindBuffer(GL_ARRAY_BUFFER, VBO)
-    glBufferData(GL_ARRAY_BUFFER, vertices.nbytes + normals.nbytes, None, GL_STATIC_DRAW)
-    glBufferSubData(GL_ARRAY_BUFFER, 0, vertices.nbytes, vertices)
-    glBufferSubData(GL_ARRAY_BUFFER, vertices.nbytes, normals.nbytes, normals)
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO)
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL_STATIC_DRAW)
-
-    # 设置顶点属性指针
-    pos_loc = glGetAttribLocation(shader, "position")
-    glVertexAttribPointer(pos_loc, 3, GL_FLOAT, GL_FALSE, 0, ctypes.c_void_p(0))
-    glEnableVertexAttribArray(pos_loc)
-
-    normal_loc = glGetAttribLocation(shader, "normal")
-    glVertexAttribPointer(normal_loc, 3, GL_FLOAT, GL_FALSE, 0, ctypes.c_void_p(vertices.nbytes))
-    glEnableVertexAttribArray(normal_loc)
     
     glUseProgram(shader)
     glEnable(GL_DEPTH_TEST)
@@ -375,68 +307,100 @@ def main():
     glBindFramebuffer(GL_FRAMEBUFFER, 0)
     #阴影部分结束  ----
     
-    clock = pygame.time.Clock()
-    
-    model = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, -0.5))
-    # model = glm.rotate(model, pygame.time.get_ticks() * 0.001, glm.vec3(0.5, 1.0, 0.0))
-    glUniformMatrix4fv(model_loc, 1, GL_FALSE, glm.value_ptr(model))
+    for i in range(begin_index, image_count + 1):
+        # 每次重新生成模型
+        vertices, normals, indices = create_icosphere(6, 0.1)
         
-    # 渲染阴影贴图开始
-    light_view = glm.lookAt(light_position, glm.vec3(0.0, 0.0, -0.5), glm.vec3(0, 1, 0))
-    light_projection = glm.perspective(glm.radians(30.0), 1.0, near, far)
+        # 重新绑定 VAO、VBO 和 EBO
+        glBindBuffer(GL_ARRAY_BUFFER, VBO)
+        glBufferData(GL_ARRAY_BUFFER, vertices.nbytes + normals.nbytes, None, GL_STATIC_DRAW)
+        glBufferSubData(GL_ARRAY_BUFFER, 0, vertices.nbytes, vertices)
+        glBufferSubData(GL_ARRAY_BUFFER, vertices.nbytes, normals.nbytes, normals)
 
-    glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo)
-    glClear(GL_DEPTH_BUFFER_BIT)
-    glUseProgram(shader)
-    glUniformMatrix4fv(view_loc, 1, GL_FALSE, glm.value_ptr(light_view))
-    glUniformMatrix4fv(proj_loc, 1, GL_FALSE, glm.value_ptr(light_projection))
-    glDrawElements(GL_TRIANGLES, len(indices), GL_UNSIGNED_INT, None)
-    
-    # 调试光照
-    # world_z_depth = get_world_depth_buffer(light_view, light_projection, display[0], display[1], near, far)
-    # world_z_depth[world_z_depth < -1.0] = 0.0
-    # world_z_depth[world_z_depth == 0.0] = world_z_depth.min()
-    # world_z_depth = (world_z_depth - world_z_depth.min()) / (world_z_depth.max() - world_z_depth.min())
-    # cv2.imshow("world_z_depth", (world_z_depth * 255).astype(np.uint8))
-    # cv2.waitKey(1)
-    
-    glBindFramebuffer(GL_FRAMEBUFFER, 0)
-    # 渲染阴影贴图结束
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO)
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL_STATIC_DRAW)
 
-    # 设置回原来的渲染状态
-    glUniformMatrix4fv(proj_loc, 1, GL_FALSE, glm.value_ptr(projection))
-    glUniformMatrix4fv(view_loc, 1, GL_FALSE, glm.value_ptr(view))
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-    
-    # 正式渲染
-    light_space_matrix_loc = glGetUniformLocation(shader, "light_space_matrix")
-    shadow_map_loc = glGetUniformLocation(shader, "shadow_map")
+        # 设置顶点属性指针
+        pos_loc = glGetAttribLocation(shader, "position")
+        glVertexAttribPointer(pos_loc, 3, GL_FLOAT, GL_FALSE, 0, ctypes.c_void_p(0))
+        glEnableVertexAttribArray(pos_loc)
 
-    # 在渲染场景时设置阴影相关的uniform
-    glUniformMatrix4fv(light_space_matrix_loc, 1, GL_TRUE, np.array(light_projection * light_view))
-    glActiveTexture(GL_TEXTURE1)
-    glBindTexture(GL_TEXTURE_2D, depth_texture)
-    glUniform1i(shadow_map_loc, 1)
-    
+        normal_loc = glGetAttribLocation(shader, "normal")
+        glVertexAttribPointer(normal_loc, 3, GL_FLOAT, GL_FALSE, 0, ctypes.c_void_p(vertices.nbytes))
+        glEnableVertexAttribArray(normal_loc)
 
-    # 调用函数获取世界坐标系中的Z深度矩阵
-    # world_z_depth = get_world_depth_buffer(view, projection, display[0], display[1], near, far)
-    # world_z_depth[world_z_depth < -1.0] = 0.0
-    # world_z_depth[world_z_depth == 0.0] = world_z_depth.min()
-    # world_z_depth = (world_z_depth - world_z_depth.min()) / (world_z_depth.max() - world_z_depth.min())
-    # cv2.imshow("world_z_depth", (world_z_depth * 255).astype(np.uint8))
-    # cv2.waitKey(1)
-    
-    while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                quit()
+        model = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, np.random.uniform(-0.6, -0.4)))
+        glUniformMatrix4fv(model_loc, 1, GL_FALSE, glm.value_ptr(model))
 
+        # 渲染阴影贴图开始
+        light_view = glm.lookAt(light_position, glm.vec3(0.0, 0.0, -0.5), glm.vec3(0, 1, 0))
+        light_projection = glm.perspective(glm.radians(40.0), 1.0, near, far)
+
+        glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo)
+        glClear(GL_DEPTH_BUFFER_BIT)
+        glUseProgram(shader)
+        glUniformMatrix4fv(view_loc, 1, GL_FALSE, glm.value_ptr(light_view))
+        glUniformMatrix4fv(proj_loc, 1, GL_FALSE, glm.value_ptr(light_projection))
+        glDrawElements(GL_TRIANGLES, len(indices), GL_UNSIGNED_INT, None)
+    
+        glBindFramebuffer(GL_FRAMEBUFFER, 0)
+        # 渲染阴影贴图结束
+
+        # 设置回原来的渲染状态
+        glUniformMatrix4fv(proj_loc, 1, GL_FALSE, glm.value_ptr(projection))
+        glUniformMatrix4fv(view_loc, 1, GL_FALSE, glm.value_ptr(view))
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    
+        # 正式渲染
+        light_space_matrix_loc = glGetUniformLocation(shader, "light_space_matrix")
+        shadow_map_loc = glGetUniformLocation(shader, "shadow_map")
+
+        # 在渲染场景时设置阴影相关的uniform
+        glUniformMatrix4fv(light_space_matrix_loc, 1, GL_TRUE, np.array(light_projection * light_view))
+        glActiveTexture(GL_TEXTURE1)
+        glBindTexture(GL_TEXTURE_2D, depth_texture)
+        glUniform1i(shadow_map_loc, 1)
+    
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glDrawElements(GL_TRIANGLES, len(indices), GL_UNSIGNED_INT, None)
-        pygame.display.flip()
-        clock.tick(60)
+    
+        # Save the depth buffer
+        world_z_depth = get_world_depth_buffer(light_view, light_projection, display[0], display[1], near, far)
+        cv2.imwrite(f"{output_dir}/{i:08d}_z.tiff", world_z_depth.astype(np.float32))
+        
+        # 创建 mask，大于 -1 的值设置为 1，其他的设置为 0
+        mask = np.where(world_z_depth > -1, 255, 0).astype(np.uint8)  # 使用 np.uint8 转换为 8 位格式
+        # 保存 mask 为 8 位灰度 PNG 图像
+        cv2.imwrite(f"{output_dir}/{i:08d}_mask.png", mask)
+
+        world_z_depth[world_z_depth < -1.0] = 0.0
+        world_z_depth[world_z_depth == 0.0] = world_z_depth.min()
+        world_z_depth = (world_z_depth - world_z_depth.min()) / (world_z_depth.max() - world_z_depth.min())
+        cv2.imwrite(f"{output_dir}/{i:08d}_depth.png", (world_z_depth * 255).astype(np.uint8))
+        
+        # Save the rendered image
+        rendered_image = save_rendered_image(display[0], display[1])
+        cv2.imwrite(f"{output_dir}/{i:08d}_image.png", cv2.cvtColor(rendered_image, cv2.COLOR_RGB2BGR))
+
+        print(f"Generated {i+1}/{image_count} images")
+        
+    pygame.quit()
+
+def get_last_generated_index(output_dir):
+    # 找到目录中所有的文件，以 "_image.png" 结尾
+    files = [f for f in os.listdir(output_dir) if f.endswith('_image.png')]
+    if not files:
+        return -1  # 如果目录中没有文件，返回 -1 表示从头开始
+    # 提取文件名中的序号部分，并找到最大的序号
+    max_index = max([int(f.split('_')[0]) for f in files])
+    return max_index
 
 if __name__ == "__main__":
-    main()
+    
+    image_count = 10000  # Specify the number of images to generate
+    output_dir = "datasets/train"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    begin_index = get_last_generated_index(output_dir) + 1  # 从上次生成的序号开始生成
+    print(f"Begin generating images from index {begin_index}")
+    main(begin_index, image_count, output_dir)
