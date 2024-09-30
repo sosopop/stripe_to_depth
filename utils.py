@@ -23,6 +23,7 @@ def visualize_sample(image, depth_pred, mask_pred, depth_gt, mask_gt, epoch, sav
     image = image.squeeze(0)
     depth_pred = depth_pred.squeeze(0)
     mask_pred = mask_pred.squeeze(0)
+    depth_pred = depth_pred * torch.sigmoid(mask_pred)
     depth_gt = depth_gt.squeeze(0)
     mask_gt = mask_gt.squeeze(0)
 
@@ -30,18 +31,13 @@ def visualize_sample(image, depth_pred, mask_pred, depth_gt, mask_gt, epoch, sav
     mask_gt = mask_gt > 0
 
     # 深度图归一化处理（预测）
-    # z_pred_max = torch.max(depth_pred)
-    # z_pred_min = torch.min(depth_pred)
-    # z_pred_normalized = (depth_pred - z_pred_min) / (z_pred_max - z_pred_min)
-
-    z_pred_normalized = torch.clamp(depth_pred, min=-1, max=0)
+    z_pred_normalized = depth_pred
+    z_pred_normalized = torch.clamp(z_pred_normalized, min=-1, max=0)
     z_pred_normalized = z_pred_normalized + 1
+    z_pred_normalized = z_pred_normalized * (mask_gt)
     
     # 深度图归一化处理（标注）
-    # z_gt_max = torch.max(depth_gt)
-    # z_gt_min = torch.min(depth_gt)
-    # z_gt_normalized = (depth_gt - z_gt_min) / (z_gt_max - z_gt_min)
-
+    z_gt_normalized = depth_gt
     z_gt_normalized = torch.clamp(depth_gt, min=-1, max=0)
     z_gt_normalized = z_gt_normalized + 1
     
@@ -77,12 +73,12 @@ def visualize_sample(image, depth_pred, mask_pred, depth_gt, mask_gt, epoch, sav
     axes[0, 1].axis('off')
 
     # 推理的归一化深度图
-    axes[0, 2].imshow(z_pred_normalized.cpu().detach(), cmap='jet')
+    axes[0, 2].imshow(z_pred_normalized.cpu().detach(), cmap='jet', vmin=0, vmax=1)
     axes[0, 2].set_title('Predicted Normalized Depth')
     axes[0, 2].axis('off')
 
     # 推理的掩码后的归一化深度图
-    axes[0, 3].imshow(z_mask_pred_normalized.cpu().detach(), cmap='jet')
+    axes[0, 3].imshow(z_mask_pred_normalized.cpu().detach(), cmap='jet', vmin=0, vmax=1)
     axes[0, 3].set_title('Masked & Normalized Depth Prediction')
     axes[0, 3].axis('off')
 
@@ -92,12 +88,12 @@ def visualize_sample(image, depth_pred, mask_pred, depth_gt, mask_gt, epoch, sav
     axes[1, 1].axis('off')
 
     # 标注的归一化深度图
-    axes[1, 2].imshow(z_gt_normalized.cpu().detach(), cmap='jet')
+    axes[1, 2].imshow(z_gt_normalized.cpu().detach(), cmap='jet', vmin=0, vmax=1)
     axes[1, 2].set_title('Ground Truth Normalized Depth')
     axes[1, 2].axis('off')
 
     # 标注的掩码后的归一化深度图
-    axes[1, 3].imshow(z_mask_gt_normalized.cpu().detach(), cmap='jet')
+    axes[1, 3].imshow(z_mask_gt_normalized.cpu().detach(), cmap='jet', vmin=0, vmax=1)
     axes[1, 3].set_title('Ground Truth Masked & Normalized Depth')
     axes[1, 3].axis('off')
 
@@ -147,3 +143,8 @@ def load_model_checkpoint(model, load_path):
     model.load_state_dict(torch.load(load_path))
 
     return model
+
+
+def log_cosh_loss(pred, target):
+    diff = pred - target
+    return torch.mean(torch.log(torch.cosh(diff)))

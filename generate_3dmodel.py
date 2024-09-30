@@ -5,6 +5,7 @@ import numpy as np
 import glm
 import cv2
 import os
+from noise import pnoise3
 
 vertex_shader = """
 #version 330 core
@@ -78,7 +79,7 @@ void main()
     // 镜面反射
     vec3 view_dir = normalize(view_pos - frag_pos);
     vec3 reflect_dir = reflect(-light_dir, norm);
-    float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+    float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 4);
     vec4 specular = spec * vec4(1.0, 1.0, 1.0, 1.0);
     
     // 条纹效果
@@ -147,9 +148,10 @@ def get_world_depth_buffer(view_matrix, projection_matrix, screen_width, screen_
     return world_z_depth
 
 
-def create_icosphere(subdivisions, radius=1.0, noise_amplitude=0.002):
+def create_icosphere(subdivisions, radius=1.0):
     # 黄金比例
     phi = (1 + np.sqrt(5)) / 2
+    noise_amplitude=np.random.uniform(0.002, 0.005)
 
     # 初始正二十面体的顶点
     vertices = np.array([
@@ -197,13 +199,17 @@ def create_icosphere(subdivisions, radius=1.0, noise_amplitude=0.002):
         vertices, faces = subdivide(vertices, faces)
 
     # 噪声函数
-    frequencies = np.random.uniform(4, 20, size=10)
-    phases = np.random.uniform(0, np.pi, size=10)
+    x_freqs = np.random.uniform(4, 20, size=10)
+    y_freqs = np.random.uniform(4, 20, size=10)
+    z_freqs = np.random.uniform(4, 20, size=10)
+    x_phases = np.random.uniform(0, np.pi, size=10)
+    y_phases = np.random.uniform(0, np.pi, size=10)
+    z_phases = np.random.uniform(0, np.pi, size=10)
 
     def noise_function(x, y, z):
         noise = 0
-        for freq, phase in zip(frequencies, phases):
-            noise += np.sin(freq * x + phase) * np.sin(freq * y + phase) * np.sin(freq * z + phase)
+        for x_freq, y_freq, z_freq, x_phase, y_phase, z_phase in zip(x_freqs, y_freqs, z_freqs, x_phases, y_phases, z_phases):
+            noise += np.sin(x_freq * x + x_phase) * np.sin(y_freq * y + y_phase) * np.sin(z_freq * z + z_phase)
         return noise_amplitude * noise
 
     # 应用噪声
@@ -329,7 +335,7 @@ def main(begin_index, image_count, output_dir):
         glVertexAttribPointer(normal_loc, 3, GL_FLOAT, GL_FALSE, 0, ctypes.c_void_p(vertices.nbytes))
         glEnableVertexAttribArray(normal_loc)
 
-        model = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, np.random.uniform(-0.6, -0.4)))
+        model = glm.translate(glm.mat4(1.0), glm.vec3(np.random.uniform(-0.1, 0.1), np.random.uniform(-0.1, 0.1), np.random.uniform(-0.6, -0.4)))
         glUniformMatrix4fv(model_loc, 1, GL_FALSE, glm.value_ptr(model))
 
         # 渲染阴影贴图开始

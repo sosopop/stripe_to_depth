@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from datasets import DepthEstimationDataset
+from datasets2 import DepthEstimationDataset2 as DepthEstimationDataset
 from model_unet import UNet
 from utils import visualize_sample, load_model_checkpoint
 import os
@@ -42,6 +42,7 @@ def validate_model(model, dataloader, criterion_depth, criterion_mask, device='c
                         mask_gt[i].cpu(),
                         f"validation_batch{batch_idx}_sample{i}"
                     )
+                break
 
     avg_loss = total_loss / num_samples
     return avg_loss
@@ -51,7 +52,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # 加载数据集
-    dataset = DepthEstimationDataset(root_dir='data')  # 假设您的数据集类有一个is_train参数
+    dataset = DepthEstimationDataset(root_dir='datasets/train')  # 假设您的数据集类有一个is_train参数
     dataloader = DataLoader(dataset, batch_size=5, shuffle=False)
 
     # 初始化模型
