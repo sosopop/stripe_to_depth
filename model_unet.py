@@ -119,12 +119,55 @@ class UNet(nn.Module):
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+
+class Discriminator(nn.Module):
+    def __init__(self, input_channels=2, complexity=64):
+        super(Discriminator, self).__init__()
+        self.complexity = complexity
+        
+        # 定义卷积层
+        self.conv1 = self.conv_block(input_channels, complexity)
+        self.conv2 = self.conv_block(complexity, complexity*2)
+        self.conv3 = self.conv_block(complexity*2, complexity*4)
+        self.conv4 = self.conv_block(complexity*4, complexity*8)
+        self.conv5 = self.conv_block(complexity*8, complexity*16)
+        
+        # 平展特征图并通过线性层输出真假值
+        self.fc = nn.Linear(complexity * 16 * 18 * 18, 1)  # 线性层将特征展平为1个输出
+        self.sigmoid = nn.Sigmoid()
+
+    def conv_block(self, input_channels, out_channels):
+        return nn.Sequential(
+            nn.Conv2d(input_channels, out_channels, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(0.2, inplace=True)
+        )
+    
+    def forward(self, x):
+        x = self.conv1(x)  # 第一层卷积
+        x = self.conv2(x)  # 第二层卷积
+        x = self.conv3(x)  # 第三层卷积
+        x = self.conv4(x)  # 第四层卷积
+        x = self.conv5(x)  # 第五层卷积
+        
+        # 展平特征图为一维向量
+        x = x.view(x.size(0), -1)  # (batch_size, complexity * 16 * 18 * 18)
+
+        # 通过线性层和sigmoid输出真假值
+        x = self.fc(x)  # (batch_size, 1)
+        x = self.sigmoid(x)  # 使用sigmoid将输出限制在[0, 1]范围
+        
+        return x.view(-1)  # 输出维度为 (batch_size,)，每个值表示真假
+
+
 # 使用示例
 def main():
     # 创建不同复杂度的模型实例
     model_low = UNet(output_channels=2, complexity=8)
     model_medium = UNet(output_channels=2, complexity=16)
     model_high = UNet(output_channels=2, complexity=32)
+    
+    discriminator = Discriminator(complexity=8)
     
     # 生成一个随机的576x576的单通道图像作为输入
     input_image = torch.randn(5, 1, 576, 576)
@@ -137,6 +180,11 @@ def main():
         print(f"  Output shape: {output.shape}")
         print(f"  Total parameters: {count_parameters(model):,}")
         print()
+        output = discriminator(torch.cat([input_image, output], dim=1))
+        print(f"  Discriminator output shape: {output.shape}")
+        print(f"  Total parameters: {count_parameters(discriminator):,}")
+        print()
+        
 
 if __name__ == "__main__":
     main()

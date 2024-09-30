@@ -8,3 +8,6 @@ readme.txt
 /*.csv
 *.obj
 datasets/*
+output_datasets/*
+datasets*/
+runs/

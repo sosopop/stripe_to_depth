@@ -31,18 +31,17 @@ def validate_model(model, dataloader, criterion_depth, criterion_mask, device='c
             total_loss += loss.item() * image.size(0)
             num_samples += image.size(0)
 
-            # 保存验证图像
-            if batch_idx < 5:  # 只保存前5个批次的图像
-                for i in range(image.size(0)):
-                    visualize_sample(
-                        image[i].cpu(),
-                        depth_pred[i].cpu(),
-                        mask_pred[i].cpu(),
-                        depth_gt[i].cpu(),
-                        mask_gt[i].cpu(),
-                        f"validation_batch{batch_idx}_sample{i}"
-                    )
-                break
+            for i in range(image.size(0)):
+                visualize_sample(
+                    image[i].cpu(),
+                    depth_pred[i].cpu(),
+                    mask_pred[i].cpu(),
+                    depth_gt[i].cpu(),
+                    mask_gt[i].cpu(),
+                    f"validation_batch{batch_idx}_sample{i}"
+                )
+            
+            break
 
     avg_loss = total_loss / num_samples
     return avg_loss
@@ -52,7 +51,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # 加载数据集
-    dataset = DepthEstimationDataset(root_dir='datasets/train')  # 假设您的数据集类有一个is_train参数
+    dataset = DepthEstimationDataset(root_dir='datasets/val')
     dataloader = DataLoader(dataset, batch_size=5, shuffle=False)
 
     # 初始化模型

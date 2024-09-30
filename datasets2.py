@@ -77,7 +77,7 @@ class DepthEstimationDataset2(Dataset):
 
 if __name__ == '__main__':
     # 创建数据集和数据加载器
-    dataset = DepthEstimationDataset2(root_dir='datasets/train/')
+    dataset = DepthEstimationDataset2(root_dir='datasets/val/')
     dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
 
     # 可视化示例
