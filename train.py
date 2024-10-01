@@ -49,13 +49,13 @@ def unsupervised_train(
     unlabeled_mask_pred = output[:, 1:2, :, :]   # 获取第二个通道，掩码图
 
     # 将有标签数据和预测结果拼接.
-    # labeled_image_noise = labeled_image * torch.randn_like(labeled_image)  # 加入噪声
-    # labeled_pred_noise = labeled_depth_pred * torch.sigmoid(labeled_mask_pred) * torch.randn_like(labeled_image)  # 加入噪声
-    labeled_input = torch.cat((labeled_image, labeled_depth_pred * torch.sigmoid(labeled_mask_pred)), dim=1)
+    labeled_image_noise = labeled_image + torch.randn_like(labeled_image)  # 加入噪声
+    labeled_pred_noise = labeled_depth_pred * torch.sigmoid(labeled_mask_pred) + torch.randn_like(labeled_image)  # 加入噪声
+    labeled_input = torch.cat((labeled_image_noise, labeled_pred_noise), dim=1)
     # 将无标签数据和预测结果拼接
-    # unlabeled_image_noise = unlabeled_image * torch.randn_like(labeled_image)  # 加入噪声
-    # unlabeled_pred_noise = unlabeled_depth_pred * torch.sigmoid(unlabeled_mask_pred) * torch.randn_like(labeled_image)  # 加入噪声
-    unlabeled_input = torch.cat((unlabeled_image, unlabeled_depth_pred * torch.sigmoid(unlabeled_mask_pred)), dim=1)
+    unlabeled_image_noise = unlabeled_image + torch.randn_like(labeled_image)  # 加入噪声
+    unlabeled_pred_noise = unlabeled_depth_pred * torch.sigmoid(unlabeled_mask_pred) + torch.randn_like(labeled_image)  # 加入噪声
+    unlabeled_input = torch.cat((unlabeled_image_noise, unlabeled_pred_noise), dim=1)
     
     # 判别器对有标签样本进行预测 (真实样本)
     labeled_output = discriminator_model(labeled_input.detach())
@@ -85,9 +85,9 @@ def unsupervised_train(
     unlabeled_mask_pred = output[:, 1:2, :, :]   # 获取第二个通道，掩码图
 
     # 拼接无标签的预测结果，作为判别器输入
-    # unlabeled_image_noise = unlabeled_image * torch.randn_like(labeled_image)  # 加入噪声
-    # unlabeled_pred_noise = unlabeled_depth_pred * torch.sigmoid(unlabeled_mask_pred) * torch.randn_like(labeled_image)  # 加入噪声
-    unlabeled_input = torch.cat((unlabeled_image, unlabeled_depth_pred * torch.sigmoid(unlabeled_mask_pred)), dim=1)
+    unlabeled_image_noise = unlabeled_image + torch.randn_like(labeled_image)  # 加入噪声
+    unlabeled_pred_noise = unlabeled_depth_pred * torch.sigmoid(unlabeled_mask_pred) + torch.randn_like(labeled_image)  # 加入噪声
+    unlabeled_input = torch.cat((unlabeled_image_noise, unlabeled_pred_noise), dim=1)
     
     # 判别器对无标签的生成样本进行预测
     unlabeled_output = discriminator_model(unlabeled_input)
@@ -142,7 +142,7 @@ def train_model(
             supervised_running_loss += loss
             
             # 使用GAN进行半监督微调训练
-            if epoch >= 0:  # 开始使用GAN进行训练
+            if epoch >= 150:  # 开始使用GAN进行训练
                 generator_loss, discriminator_loss = unsupervised_train(image, depth_pred.detach(), mask_pred.detach(), unlabeled_image, discriminator_model, generator_model, generator_optimizer, criterion_discriminator, discriminator_optimizer)
                 discriminator_running_loss += discriminator_loss
                 generator_running_loss += generator_loss
@@ -244,7 +244,6 @@ if __name__ == '__main__':
             print(f"Found checkpoint file: {checkpoint_path}")
             # 加载checkpoint
             generator_model, discriminator_model, epoch = load_model_checkpoint(generator_model, discriminator_model, checkpoint_path)
-            epoch += 1
             print(f"Loaded checkpoint from {checkpoint_path}")
     
     # 定义损失函数和优化器
@@ -252,8 +251,11 @@ if __name__ == '__main__':
     criterion_mask = nn.BCEWithLogitsLoss()  # 掩码图损失
     criterion_discriminator = torch.nn.BCELoss()  # 掩码图损失
     
+    # 监督学习优化器
     optimizer = optim.Adam(generator_model.parameters(), lr=1e-4)
-    discriminator_optimizer = optim.Adam(discriminator_model.parameters(), lr=1e-5, betas=(0.5, 0.999), weight_decay=1e-5)
+    
+    # GAN优化器
+    discriminator_optimizer = optim.Adam(discriminator_model.parameters(), lr=1e-5, betas=(0.5, 0.999), weight_decay=1e-4)
     generator_optimizer = optim.Adam(generator_model.parameters(), lr=1e-5, betas=(0.5, 0.999))
     
     # 训练模型
