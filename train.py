@@ -48,9 +48,13 @@ def unsupervised_train(
     unlabeled_depth_pred = output[:, 0:1, :, :]  # 获取第一个通道，深度图
     unlabeled_mask_pred = output[:, 1:2, :, :]   # 获取第二个通道，掩码图
 
-    # 将有标签数据和预测结果拼接
+    # 将有标签数据和预测结果拼接.
+    # labeled_image_noise = labeled_image * torch.randn_like(labeled_image)  # 加入噪声
+    # labeled_pred_noise = labeled_depth_pred * torch.sigmoid(labeled_mask_pred) * torch.randn_like(labeled_image)  # 加入噪声
     labeled_input = torch.cat((labeled_image, labeled_depth_pred * torch.sigmoid(labeled_mask_pred)), dim=1)
     # 将无标签数据和预测结果拼接
+    # unlabeled_image_noise = unlabeled_image * torch.randn_like(labeled_image)  # 加入噪声
+    # unlabeled_pred_noise = unlabeled_depth_pred * torch.sigmoid(unlabeled_mask_pred) * torch.randn_like(labeled_image)  # 加入噪声
     unlabeled_input = torch.cat((unlabeled_image, unlabeled_depth_pred * torch.sigmoid(unlabeled_mask_pred)), dim=1)
     
     # 判别器对有标签样本进行预测 (真实样本)
@@ -81,6 +85,8 @@ def unsupervised_train(
     unlabeled_mask_pred = output[:, 1:2, :, :]   # 获取第二个通道，掩码图
 
     # 拼接无标签的预测结果，作为判别器输入
+    # unlabeled_image_noise = unlabeled_image * torch.randn_like(labeled_image)  # 加入噪声
+    # unlabeled_pred_noise = unlabeled_depth_pred * torch.sigmoid(unlabeled_mask_pred) * torch.randn_like(labeled_image)  # 加入噪声
     unlabeled_input = torch.cat((unlabeled_image, unlabeled_depth_pred * torch.sigmoid(unlabeled_mask_pred)), dim=1)
     
     # 判别器对无标签的生成样本进行预测
@@ -100,7 +106,7 @@ def train_model(
     generator_model, discriminator_model, 
     labeled_train_dataloader, unlabeled_train_dataloader, val_dataloader, 
     criterion_depth, criterion_mask, criterion_discriminator, 
-    optimizer, discriminator_optimizer, generator_optimizer, num_epochs=25, device='cuda'):
+    optimizer, discriminator_optimizer, generator_optimizer, num_epochs=25, start_epoch = 0, device='cuda'):
     
     writer = SummaryWriter(log_dir='runs/gan_training')
     
@@ -109,7 +115,7 @@ def train_model(
     
     best_val_loss = float('inf')  # 初始化最优验证损失
 
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         generator_model.train()
         discriminator_model.train()
         
@@ -136,9 +142,12 @@ def train_model(
             supervised_running_loss += loss
             
             # 使用GAN进行半监督微调训练
-            generator_loss, discriminator_loss = unsupervised_train(image, depth_pred.detach(), mask_pred.detach(), unlabeled_image, discriminator_model, generator_model, generator_optimizer, criterion_discriminator, discriminator_optimizer)
-            discriminator_running_loss += discriminator_loss
-            generator_running_loss += generator_loss
+            if epoch >= 0:  # 开始使用GAN进行训练
+                generator_loss, discriminator_loss = unsupervised_train(image, depth_pred.detach(), mask_pred.detach(), unlabeled_image, discriminator_model, generator_model, generator_optimizer, criterion_discriminator, discriminator_optimizer)
+                discriminator_running_loss += discriminator_loss
+                generator_running_loss += generator_loss
+            else:
+                generator_loss, discriminator_loss = 0.0, 0.0
             
             # 更新进度条描述
             progress_bar.set_postfix(
@@ -183,7 +192,7 @@ def train_model(
             # 保存当前最优模型
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                save_model_checkpoint(generator_model, epoch)  # 保存模型
+                save_model_checkpoint(generator_model, discriminator_model, epoch)  # 保存模型
                 print(f"Best model saved with Validation Loss: {best_val_loss:.10f}")
 
             # 可视化结果
@@ -220,10 +229,13 @@ if __name__ == '__main__':
 
     # 初始化模型
     generator_model = UNet(input_channels=1, output_channels=2, complexity=8)
-    discriminator_model = Discriminator(complexity=8)
+    discriminator_model = Discriminator(complexity=4)
     
     # 获取最新的checkpoint文件
     checkpoint_dir = 'checkpoints'
+    epoch = 0
+    if not os.path.exists(checkpoint_dir):
+        os.makedirs(checkpoint_dir)
     checkpoint_files = [f for f in os.listdir(checkpoint_dir) if f.endswith('.pth')]
     if checkpoint_files:
         latest_checkpoint = max(checkpoint_files, key=lambda x: int(x.split('_')[2].split('.')[0]))
@@ -231,16 +243,17 @@ if __name__ == '__main__':
         if os.path.exists(checkpoint_path):
             print(f"Found checkpoint file: {checkpoint_path}")
             # 加载checkpoint
-            generator_model = load_model_checkpoint(generator_model, checkpoint_path)
+            generator_model, discriminator_model, epoch = load_model_checkpoint(generator_model, discriminator_model, checkpoint_path)
+            epoch += 1
             print(f"Loaded checkpoint from {checkpoint_path}")
     
     # 定义损失函数和优化器
     criterion_depth = nn.MSELoss()  # 深度图损失
     criterion_mask = nn.BCEWithLogitsLoss()  # 掩码图损失
-    criterion_discriminator = nn.BCEWithLogitsLoss()  # 掩码图损失
-    optimizer = optim.Adam(generator_model.parameters(), lr=1e-4)
+    criterion_discriminator = torch.nn.BCELoss()  # 掩码图损失
     
-    discriminator_optimizer = optim.Adam(discriminator_model.parameters(), lr=1e-5, betas=(0.5, 0.999))
+    optimizer = optim.Adam(generator_model.parameters(), lr=1e-4)
+    discriminator_optimizer = optim.Adam(discriminator_model.parameters(), lr=1e-5, betas=(0.5, 0.999), weight_decay=1e-5)
     generator_optimizer = optim.Adam(generator_model.parameters(), lr=1e-5, betas=(0.5, 0.999))
     
     # 训练模型
@@ -248,7 +261,7 @@ if __name__ == '__main__':
         generator_model, discriminator_model, 
         labeled_train_dataloader, unlabeled_train_dataloader, val_dataloader, 
         criterion_depth, criterion_mask, criterion_discriminator, 
-        optimizer, discriminator_optimizer, generator_optimizer, num_epochs=100000)
+        optimizer, discriminator_optimizer, generator_optimizer, num_epochs=100000, start_epoch=epoch, device='cuda')
 
     # 保存模型
     torch.save(trained_model.state_dict(), 'depth_estimation_model.pth')

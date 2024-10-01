@@ -125,40 +125,64 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         self.complexity = complexity
         
-        # 定义卷积层
-        self.conv1 = self.conv_block(input_channels, complexity)
-        self.conv2 = self.conv_block(complexity, complexity*2)
-        self.conv3 = self.conv_block(complexity*2, complexity*4)
-        self.conv4 = self.conv_block(complexity*4, complexity*8)
-        self.conv5 = self.conv_block(complexity*8, complexity*16)
+        # 定义卷积层，使用3x3和5x5的卷积核
+        self.conv1 = self.conv_block(input_channels, complexity, kernel_size=3)
+        self.conv2 = self.conv_block(complexity, complexity*2, kernel_size=5)
+        self.conv3 = self.conv_block(complexity*2, complexity*4, kernel_size=3)
+        self.conv4 = self.conv_block(complexity*4, complexity*8, kernel_size=5)
         
+        # 定义池化层
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        # 1x1卷积调整通道数，便于残差连接
+        self.residual1 = nn.Conv2d(input_channels, complexity, kernel_size=1, stride=2, padding=0)
+        self.residual2 = nn.Conv2d(complexity, complexity*2, kernel_size=1, stride=2, padding=0)
+        self.residual3 = nn.Conv2d(complexity*2, complexity*4, kernel_size=1, stride=2, padding=0)
+        self.residual4 = nn.Conv2d(complexity*4, complexity*8, kernel_size=1, stride=2, padding=0)
+
         # 平展特征图并通过线性层输出真假值
-        self.fc = nn.Linear(complexity * 16 * 18 * 18, 1)  # 线性层将特征展平为1个输出
+        self.fc = nn.Linear(complexity * 8 * 2 * 2, 1)  # 注意这里根据池化层的加入调整展平尺寸
         self.sigmoid = nn.Sigmoid()
 
-    def conv_block(self, input_channels, out_channels):
+    def conv_block(self, input_channels, out_channels, kernel_size):
         return nn.Sequential(
-            nn.Conv2d(input_channels, out_channels, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(input_channels, out_channels, kernel_size=kernel_size, stride=2, padding=kernel_size // 2),
             nn.BatchNorm2d(out_channels),
             nn.LeakyReLU(0.2, inplace=True)
         )
     
     def forward(self, x):
-        x = self.conv1(x)  # 第一层卷积
-        x = self.conv2(x)  # 第二层卷积
-        x = self.conv3(x)  # 第三层卷积
-        x = self.conv4(x)  # 第四层卷积
-        x = self.conv5(x)  # 第五层卷积
-        
+        # 第一层卷积及池化和残差连接
+        residual = self.residual1(x)  # 残差连接
+        x = self.conv1(x)
+        x = x + residual  # 残差相加
+        x = self.pool(x)  # 加入池化层
+
+        # 第二层卷积及池化和残差连接
+        residual = self.residual2(x)
+        x = self.conv2(x)
+        x = x + residual
+        x = self.pool(x)
+
+        # 第三层卷积及池化和残差连接
+        residual = self.residual3(x)
+        x = self.conv3(x)
+        x = x + residual
+        x = self.pool(x)
+
+        # 第四层卷积及池化和残差连接
+        residual = self.residual4(x)
+        x = self.conv4(x)
+        x = x + residual
+        x = self.pool(x)
+
         # 展平特征图为一维向量
-        x = x.view(x.size(0), -1)  # (batch_size, complexity * 16 * 18 * 18)
+        x = x.view(x.size(0), -1)
 
         # 通过线性层和sigmoid输出真假值
-        x = self.fc(x)  # (batch_size, 1)
-        x = self.sigmoid(x)  # 使用sigmoid将输出限制在[0, 1]范围
-        
+        x = self.fc(x)
+        x = self.sigmoid(x)
         return x.view(-1)  # 输出维度为 (batch_size,)，每个值表示真假
-
 
 # 使用示例
 def main():
@@ -180,7 +204,8 @@ def main():
         print(f"  Output shape: {output.shape}")
         print(f"  Total parameters: {count_parameters(model):,}")
         print()
-        output = discriminator(torch.cat([input_image, output], dim=1))
+        
+        output = discriminator(torch.randn(5, 2, 576, 576))
         print(f"  Discriminator output shape: {output.shape}")
         print(f"  Total parameters: {count_parameters(discriminator):,}")
         print()

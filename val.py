@@ -2,11 +2,12 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from datasets2 import DepthEstimationDataset2 as DepthEstimationDataset
-from model_unet import UNet
+from model_unet import UNet, Discriminator
 from utils import visualize_sample, load_model_checkpoint
 import os
 
 def validate_model(model, dataloader, criterion_depth, criterion_mask, device='cuda'):
+    model = model.to(device)
     model.eval()
     total_loss = 0.0
     num_samples = 0
@@ -55,7 +56,8 @@ if __name__ == '__main__':
     dataloader = DataLoader(dataset, batch_size=5, shuffle=False)
 
     # 初始化模型
-    model = UNet(input_channels=1, output_channels=2, complexity=8).to(device)
+    generator_model = UNet(input_channels=1, output_channels=2, complexity=8)
+    discriminator_model = Discriminator(complexity=4)
 
     # 定义损失函数
     criterion_depth = nn.MSELoss()
@@ -68,9 +70,9 @@ if __name__ == '__main__':
     checkpoint_path = os.path.join(checkpoint_dir, latest_checkpoint)
 
     # 加载checkpoint
-    model = load_model_checkpoint(model, checkpoint_path)
+    generator_model, discriminator_model, epoch = load_model_checkpoint(generator_model, discriminator_model, checkpoint_path)
     print(f"Loaded checkpoint from {checkpoint_path}")
 
     # 验证模型
-    avg_loss = validate_model(model, dataloader, criterion_depth, criterion_mask, device)
+    avg_loss = validate_model(generator_model, dataloader, criterion_depth, criterion_mask, device)
     print(f"Validation Loss: {avg_loss:.8f}")

@@ -106,12 +106,13 @@ def visualize_sample(image, depth_pred, mask_pred, depth_gt, mask_gt, epoch, sav
     plt.savefig(save_path)
     plt.close()
 
-def save_model_checkpoint(model, epoch, save_dir='checkpoints'):
+def save_model_checkpoint(generator_model, discriminator_model, epoch, save_dir='checkpoints'):
     """
-    保存模型检查点到指定目录
+    保存生成器和判别器模型的检查点到一个文件
     
     参数:
-    - model: 要保存的模型
+    - generator_model: 生成器模型
+    - discriminator_model: 判别器模型
     - epoch: 当前的训练轮次
     - save_dir: 保存检查点的目录，默认为 'checkpoints'
     """
@@ -122,27 +123,41 @@ def save_model_checkpoint(model, epoch, save_dir='checkpoints'):
     # 构建保存路径
     save_path = os.path.join(save_dir, f'model_epoch_{epoch+1}.pth')
     
-    # 保存模型
-    torch.save(model.state_dict(), save_path)
-    print(f"Model checkpoint saved to {save_path}")
+    # 保存生成器和判别器的权重到一个文件
+    torch.save({
+        'epoch': epoch + 1,
+        'generator_state_dict': generator_model.state_dict(),
+        'discriminator_state_dict': discriminator_model.state_dict()
+    }, save_path)
     
-def load_model_checkpoint(model, load_path):
+    print(f"Model checkpoint for epoch {epoch + 1} saved to {save_path}")
+    
+def load_model_checkpoint(generator_model, discriminator_model, load_path):
     """
-    加载模型检查点
-
+    加载生成器和判别器的模型检查点
+    
     参数:
-    - model: 要加载的模型实例
+    - generator_model: 生成器模型实例
+    - discriminator_model: 判别器模型实例
     - load_path: 检查点的路径
 
     返回:
-    - model: 加载了检查点的模型
+    - generator_model: 加载了检查点的生成器模型
+    - discriminator_model: 加载了检查点的判别器模型
+    - epoch: 加载的检查点对应的 epoch
     """
 
-    # 加载模型状态字典
-    model.load_state_dict(torch.load(load_path))
-
-    return model
-
+    # 加载保存的检查点
+    checkpoint = torch.load(load_path)
+    
+    # 加载生成器和判别器的状态字典
+    generator_model.load_state_dict(checkpoint['generator_state_dict'])
+    discriminator_model.load_state_dict(checkpoint['discriminator_state_dict'])
+    
+    # 获取保存时的训练轮次（epoch）
+    epoch = checkpoint['epoch']
+    
+    return generator_model, discriminator_model, epoch
 
 def log_cosh_loss(pred, target):
     diff = pred - target
