@@ -52,7 +52,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # 加载数据集
-    dataset = DepthEstimationDataset(root_dir='datasets/val')
+    dataset = DepthEstimationDataset(root_dir='datasets3/val')
     dataloader = DataLoader(dataset, batch_size=5, shuffle=False)
 
     # 初始化模型

@@ -49,7 +49,7 @@ def unsupervised_train(
     unlabeled_mask_pred = output[:, 1:2, :, :]   # 获取第二个通道，掩码图
 
     # 将有标签数据和预测结果拼接.
-    noise_weight = 0.5
+    noise_weight = 0.8  # 噪声权重
     labeled_image_noise = labeled_image + torch.randn_like(labeled_image) * noise_weight  # 加入噪声
     labeled_pred_noise = labeled_depth_pred * torch.sigmoid(labeled_mask_pred) + torch.randn_like(labeled_image) * noise_weight  # 加入噪声
     labeled_input = torch.cat((labeled_image_noise, labeled_pred_noise), dim=1)
@@ -143,7 +143,7 @@ def train_model(
             supervised_running_loss += loss
             
             # 使用GAN进行半监督微调训练
-            if epoch >= 500:  # 开始使用GAN进行训练
+            if epoch > 100:  # 开始使用GAN进行训练
                 generator_loss, discriminator_loss = unsupervised_train(image, depth_pred.detach(), mask_pred.detach(), unlabeled_image, discriminator_model, generator_model, generator_optimizer, criterion_discriminator, discriminator_optimizer)
                 discriminator_running_loss += discriminator_loss
                 generator_running_loss += generator_loss
@@ -254,7 +254,7 @@ if __name__ == '__main__':
     criterion_discriminator = torch.nn.BCELoss()  # 判别器损失
     
     # 监督学习优化器
-    optimizer = optim.Adam(generator_model.parameters(), lr=1e-4)
+    optimizer = optim.Adam(generator_model.parameters(), lr=1e-4, weight_decay=1e-4)
     
     # GAN优化器
     discriminator_optimizer = optim.Adam(discriminator_model.parameters(), lr=1e-5, betas=(0.5, 0.999), weight_decay=1e-4)
