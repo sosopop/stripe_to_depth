@@ -8,6 +8,7 @@ from datasets2 import DepthEstimationDataset2 as DepthEstimationDataset
 from model_unet import UNet, Discriminator
 from utils import visualize_sample, save_model_checkpoint, load_model_checkpoint, log_cosh_loss
 from torch.utils.tensorboard import SummaryWriter
+from torchvision import transforms
 
 # 使用标签数据进行监督训练
 def supervised_train(image, depth_gt, mask_gt, generator_model, generator_optimizer, criterion_depth, criterion_mask):
@@ -17,12 +18,15 @@ def supervised_train(image, depth_gt, mask_gt, generator_model, generator_optimi
     depth_pred = output[:, 0:1, :, :]  # 获取第一个通道，深度图
     mask_pred = output[:, 1:2, :, :]   # 获取第二个通道，掩码图
     
-    depth_mask_gt = depth_gt * mask_gt  # 掩码处理后的标注深度图
-    depth_mask_pred = depth_pred * torch.sigmoid(mask_pred)  # 掩码处理后的深度图
+    # depth_mask_gt = depth_gt * mask_gt  # 掩码处理后的标注深度图
+    # depth_mask_pred = depth_pred * mask_gt  # 掩码处理后的深度图
     
     # 计算损失
-    loss_depth = criterion_depth(depth_mask_gt, depth_mask_pred)
+    loss_depth = criterion_depth(depth_pred, depth_gt)
+    # loss_depth2 = criterion_depth(depth_pred * mask_gt, depth_gt * mask_gt)
+    # loss_depth = criterion_depth(depth_mask_pred, depth_mask_gt)
     loss_mask = criterion_mask(mask_pred, mask_gt)
+    # loss = loss_depth * 0.4 + loss_depth2 * 10 + loss_mask * 0.1
     loss = loss_depth * 0.9 + loss_mask * 0.1
 
     # 反向传播和优化
@@ -51,12 +55,12 @@ def unsupervised_train(
     # 将有标签数据和预测结果拼接.
     noise_weight = 0.8  # 噪声权重
     labeled_image_noise = labeled_image + torch.randn_like(labeled_image) * noise_weight  # 加入噪声
-    labeled_pred_noise = labeled_depth_pred * torch.sigmoid(labeled_mask_pred) + torch.randn_like(labeled_image) * noise_weight  # 加入噪声
-    labeled_input = torch.cat((labeled_image_noise, labeled_pred_noise), dim=1)
+    labeled_pred_noise = labeled_depth_pred + torch.randn_like(labeled_image) * noise_weight  # 加入噪声
+    labeled_input = torch.cat((labeled_image_noise, labeled_mask_pred, labeled_pred_noise), dim=1)
     # 将无标签数据和预测结果拼接
     unlabeled_image_noise = unlabeled_image + torch.randn_like(labeled_image) * noise_weight  # 加入噪声
-    unlabeled_pred_noise = unlabeled_depth_pred * torch.sigmoid(unlabeled_mask_pred) + torch.randn_like(labeled_image) * noise_weight  # 加入噪声
-    unlabeled_input = torch.cat((unlabeled_image_noise, unlabeled_pred_noise), dim=1)
+    unlabeled_pred_noise = unlabeled_depth_pred + torch.randn_like(labeled_image) * noise_weight  # 加入噪声
+    unlabeled_input = torch.cat((unlabeled_image_noise, unlabeled_mask_pred, unlabeled_pred_noise), dim=1)
     
     # 判别器对有标签样本进行预测 (真实样本)
     labeled_output = discriminator_model(labeled_input.detach())
@@ -87,8 +91,8 @@ def unsupervised_train(
 
     # 拼接无标签的预测结果，作为判别器输入
     unlabeled_image_noise = unlabeled_image + torch.randn_like(labeled_image) * noise_weight  # 加入噪声
-    unlabeled_pred_noise = unlabeled_depth_pred * torch.sigmoid(unlabeled_mask_pred) + torch.randn_like(labeled_image) * noise_weight  # 加入噪声
-    unlabeled_input = torch.cat((unlabeled_image_noise, unlabeled_pred_noise), dim=1)
+    unlabeled_pred_noise = unlabeled_depth_pred + torch.randn_like(labeled_image) * noise_weight  # 加入噪声
+    unlabeled_input = torch.cat((unlabeled_image_noise, unlabeled_mask_pred, unlabeled_pred_noise), dim=1)
     
     # 判别器对无标签的生成样本进行预测
     unlabeled_output = discriminator_model(unlabeled_input)
@@ -143,7 +147,7 @@ def train_model(
             supervised_running_loss += loss
             
             # 使用GAN进行半监督微调训练
-            if epoch > 100:  # 开始使用GAN进行训练
+            if epoch > 200 and epoch % 2 == 1:  # 开始使用GAN进行训练
                 generator_loss, discriminator_loss = unsupervised_train(image, depth_pred.detach(), mask_pred.detach(), unlabeled_image, discriminator_model, generator_model, generator_optimizer, criterion_discriminator, discriminator_optimizer)
                 discriminator_running_loss += discriminator_loss
                 generator_running_loss += generator_loss
@@ -163,7 +167,7 @@ def train_model(
         writer.add_scalar('Loss/G', generator_running_loss / len(labeled_train_dataloader), epoch)
 
         # 每 50 轮进行一次验证和保存模型
-        if (epoch + 1) % 50 == 0:
+        if (epoch + 1) % 1 == 0:
             generator_model.eval()  # 切换到评估模式
             val_running_loss = 0.0
             with torch.no_grad():
@@ -176,10 +180,11 @@ def train_model(
                     depth_pred = output[:, 0:1, :, :]
                     mask_pred = output[:, 1:2, :, :]
                     
-                    depth_mask_gt = depth_gt * mask_gt
-                    depth_mask_pred = depth_pred * torch.sigmoid(mask_pred)
+                    # depth_mask_gt = depth_gt * mask_gt  # 掩码处理后的标注深度图
+                    # depth_mask_pred = depth_pred * mask_gt  # 掩码处理后的深度图
                     
-                    loss_depth = criterion_depth(depth_mask_gt, depth_mask_pred)
+                    # loss_depth = criterion_depth(depth_pred, depth_gt)
+                    loss_depth = criterion_depth(depth_pred, depth_gt)
                     loss_mask = criterion_mask(mask_pred, mask_gt)
                     loss = loss_depth * 0.9 + loss_mask * 0.1
 
@@ -193,8 +198,8 @@ def train_model(
             # 保存当前最优模型
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                save_model_checkpoint(generator_model, discriminator_model, epoch)  # 保存模型
-                print(f"Best model saved with Validation Loss: {best_val_loss:.10f}")
+            save_model_checkpoint(generator_model, discriminator_model, epoch)  # 保存模型
+            print(f"Best model saved with Validation Loss: {best_val_loss:.10f}")
 
             # 可视化结果
             with torch.no_grad():
@@ -218,20 +223,27 @@ def train_model(
 if __name__ == '__main__':
     # 加载数据集
     datasets_dir = 'datasets3'
-    labeled_train_dataset = DepthEstimationDataset(root_dir=f'{datasets_dir}/supervised_train')
+    transform = transforms.Compose([
+        transforms.RandomHorizontalFlip(p=0.5),  # 随机水平翻转
+        # transforms.RandomVerticalFlip(p=0.5),    # 随机垂直翻转
+        transforms.RandomErasing(p=0.8, scale=(0.07, 0.07), ratio=(0.5, 2), value=0),
+        transforms.RandomErasing(p=0.8, scale=(0.05, 0.05), ratio=(0.5, 2), value=0),
+        transforms.RandomErasing(p=0.8, scale=(0.1, 0.1), ratio=(0.5, 2), value=0)
+    ])
+    labeled_train_dataset = DepthEstimationDataset(root_dir=f'{datasets_dir}/supervised_train', data_size=5000, transform=transform, noise_mask_prob=(0.0, 0.03))
     labeled_train_dataloader = DataLoader(labeled_train_dataset, batch_size=8, shuffle=True, num_workers=4)
-    unlabeled_train_dataset = DepthEstimationDataset(root_dir=f'{datasets_dir}/unsupervised_train')
+    unlabeled_train_dataset = DepthEstimationDataset(root_dir=f'{datasets_dir}/unsupervised_train', data_size=5000, transform=transform, noise_mask_prob=(0.0, 0.03))
     unlabeled_train_dataloader = DataLoader(unlabeled_train_dataset, batch_size=8, shuffle=True, num_workers=4)
     
     val_dataset = DepthEstimationDataset(root_dir=f'{datasets_dir}/val')
-    val_dataloader = DataLoader(val_dataset, batch_size=2, shuffle=False, num_workers=1)
+    val_dataloader = DataLoader(val_dataset, batch_size=2, shuffle=False)
     
     print(f"Supervised training set size: {len(labeled_train_dataset)}, Unsupervised training set size: {len(unlabeled_train_dataset)}")
     print(f"Validation set size: {len(val_dataset)}")
 
     # 初始化模型
     generator_model = UNet(input_channels=1, output_channels=2, complexity=8)
-    discriminator_model = Discriminator(complexity=4)
+    discriminator_model = Discriminator(complexity=4, input_channels=3)
     
     # 获取最新的checkpoint文件
     checkpoint_dir = 'checkpoints'
@@ -250,6 +262,7 @@ if __name__ == '__main__':
     
     # 定义损失函数和优化器
     criterion_depth = nn.MSELoss()  # 深度图损失
+    # criterion_depth = log_cosh_loss  # 使用 log_cosh_loss 代替 MSELoss
     criterion_mask = nn.BCEWithLogitsLoss()  # 掩码图损失
     criterion_discriminator = torch.nn.BCELoss()  # 判别器损失
     

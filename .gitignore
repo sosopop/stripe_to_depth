@@ -12,3 +12,4 @@ output_datasets/*
 datasets*/
 runs/
 backup/
+validation_samples/*

@@ -23,7 +23,7 @@ def visualize_sample(image, depth_pred, mask_pred, depth_gt, mask_gt, epoch, sav
     image = image.squeeze(0)
     depth_pred = depth_pred.squeeze(0)
     mask_pred = mask_pred.squeeze(0)
-    depth_pred = depth_pred * torch.sigmoid(mask_pred)
+    depth_pred = depth_pred
     depth_gt = depth_gt.squeeze(0)
     mask_gt = mask_gt.squeeze(0)
 
@@ -32,14 +32,13 @@ def visualize_sample(image, depth_pred, mask_pred, depth_gt, mask_gt, epoch, sav
 
     # 深度图归一化处理（预测）
     z_pred_normalized = depth_pred
-    z_pred_normalized = torch.clamp(z_pred_normalized, min=-1, max=0)
-    z_pred_normalized = z_pred_normalized + 1
-    z_pred_normalized = z_pred_normalized * (mask_gt)
+    z_pred_normalized = torch.clamp(z_pred_normalized, min=0, max=1)
+    z_pred_normalized = z_pred_normalized
     
     # 深度图归一化处理（标注）
     z_gt_normalized = depth_gt
-    z_gt_normalized = torch.clamp(depth_gt, min=-1, max=0)
-    z_gt_normalized = z_gt_normalized + 1
+    z_gt_normalized = torch.clamp(depth_gt, min=0, max=1)
+    z_gt_normalized = z_gt_normalized
     
     # 掩码处理后的深度图归一化（标注）
     masked_z_gt = torch.where(mask_gt == 1, depth_gt, torch.nan)

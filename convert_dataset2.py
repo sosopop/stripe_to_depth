@@ -36,8 +36,8 @@ def process_dataset(source_root, target_dir):
     
     # 根据比例分配数据
     total_dirs = len(directories)
-    supervised_count = total_dirs // 5  # 1/5
-    unsupervised_count = (total_dirs * 3) // 5  # 3/5
+    supervised_count = (total_dirs * 2) // 5  # 2/5
+    unsupervised_count = (total_dirs * 2) // 5  # 2/5
     val_count = total_dirs - supervised_count - unsupervised_count  # 剩余作为 val
     
     supervised_dirs = directories[:supervised_count]
@@ -47,8 +47,8 @@ def process_dataset(source_root, target_dir):
     # 处理函数
     def process_and_save_data(root, target_sub_dir):
         nonlocal file_counter
-        if root.find('42_') != -1:  # 过滤掉 42_ 开头的文件夹
-            return
+        # if root.find('42_') != -1:  # 过滤掉 42_ 开头的文件夹
+        #     return
         # 构建源文件路径
         image_path = os.path.join(root, '1.png')
         z_path = os.path.join(root, 'z.csv')
@@ -65,7 +65,7 @@ def process_dataset(source_root, target_dir):
         
         try:
             # 复制并处理图像文件
-            image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+            image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
             
             # 获取原始图像的尺寸
             original_height, original_width = image.shape[:2]
@@ -77,7 +77,7 @@ def process_dataset(source_root, target_dir):
             right = target_size[0] - original_width - left
             
             # 添加黑边扩展图像
-            image_with_border = cv2.copyMakeBorder(image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[0, 0, 0])
+            image_with_border = cv2.copyMakeBorder(image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[0])
             
             # 保存扩展后的图像
             cv2.imwrite(target_image_path, image_with_border)
@@ -85,31 +85,32 @@ def process_dataset(source_root, target_dir):
             # 处理深度图数据
             z_data = pd.read_csv(z_path, header=None).values
             z_data = z_data.astype(np.float32)  # 确保数据类型为32位浮点数
-            z_data_with_border = cv2.copyMakeBorder(z_data, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[0])
+            z_data_with_border = cv2.copyMakeBorder(z_data, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[-1])
             tiff.imwrite(target_z_path, z_data_with_border)
             
             # 处理掩码数据
-            mask_data = pd.read_csv(mask_path, header=None).values
-            mask_data = (mask_data > 0).astype(np.uint8) * 255  # 二值化掩码
+            # mask_data = pd.read_csv(mask_path, header=None).values
+            # mask_data = (mask_data > 0).astype(np.uint8) * 255  # 二值化掩码
             
-            # 为掩码添加黑边
-            mask_with_border = cv2.copyMakeBorder(mask_data, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[0])
+            # # 为掩码添加黑边
+            # mask_with_border = cv2.copyMakeBorder(mask_data, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[0])
             
-            # 保存扩展后的掩码
-            cv2.imwrite(target_mask_path, mask_with_border)
+            # # 保存扩展后的掩码
+            # cv2.imwrite(target_mask_path, mask_with_border)
             
             # 归一化 z_data 并保存深度图像
-            z_data = z_data_with_border[mask_with_border != 0]
-            z_min, z_max = np.min(z_data), np.max(z_data)
-            z_normalized = (z_data_with_border - z_min) / (z_max - z_min) * 255  # 归一化到 [0, 255]
-            z_normalized = z_normalized.astype(np.uint8)  # 转换为 uint8 类型
-            z_normalized[mask_with_border == 0] = 0  # 掩掉无效区域
-            
-            # 将归一化后的深度图添加黑边
-            depth_with_border = cv2.copyMakeBorder(z_normalized, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[0])
+            z_data_with_border[z_data_with_border < -0.4] = -1  # 过滤掉异常值
+            z_data_with_border[image_with_border<2] = -1
+            z_data_with_border = (np.clip(z_data_with_border, -1, 0) + 1) * 255
             
             # 保存深度图像
-            cv2.imwrite(target_depth_image_path, depth_with_border)
+            cv2.imwrite(target_depth_image_path, z_data_with_border)
+            
+            
+            mask_data = z_data_with_border
+            mask_data[z_data_with_border > 0] = 255  # 掩码中标记为 255 的像素对应于深度图像中大于 0 的像素
+            # 保存掩码
+            cv2.imwrite(target_mask_path, mask_data)
             
             file_counter += 1
             

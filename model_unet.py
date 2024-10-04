@@ -2,124 +2,122 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class SEBlock(nn.Module):
-    def __init__(self, channel, reduction=16):
-        super(SEBlock, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(
-            nn.Linear(channel, channel // reduction, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Linear(channel // reduction, channel, bias=False),
-            nn.Sigmoid()
-        )
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-torch.log(torch.tensor(10000.0)) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer('pe', pe)
 
     def forward(self, x):
-        b, c, _, _ = x.size()
-        y = self.avg_pool(x).view(b, c)
-        y = self.fc(y).view(b, c, 1, 1)
-        return x * y.expand_as(x)
+        return x + self.pe[:x.size(0), :]
 
-class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-        self.se = SEBlock(out_channels)
-        self.shortcut = nn.Sequential()
-        if in_channels != out_channels:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
-                nn.BatchNorm2d(out_channels)
-            )
+class TransformerBlock(nn.Module):
+    def __init__(self, d_model, nhead, dim_feedforward=1024, dropout=0.1):
+        super(TransformerBlock, self).__init__()
+        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
+        self.linear1 = nn.Linear(d_model, dim_feedforward)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model)
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.activation = nn.ReLU()
 
-    def forward(self, x):
-        residual = x
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = self.bn2(self.conv2(out))
-        out = self.se(out)
-        out += self.shortcut(residual)
-        out = F.relu(out)
-        return out
+    def forward(self, src):
+        src2 = self.self_attn(src, src, src)[0]
+        src = src + self.dropout1(src2)
+        src = self.norm1(src)
+        src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
+        src = src + self.dropout2(src2)
+        src = self.norm2(src)
+        return src
 
 class UNet(nn.Module):
-    def __init__(self, input_channels=1, output_channels=1, complexity=64):
+    def __init__(self, input_channels=1, output_channels=2, complexity=8, use_transformer=True):
         super(UNet, self).__init__()
-        self.input_channels = input_channels
-        self.output_channels = output_channels
-        self.complexity = complexity
 
-        self.inc = nn.Sequential(
-            nn.Conv2d(input_channels, complexity, kernel_size=3, padding=(1, 1), bias=False),
-            nn.BatchNorm2d(complexity),
+        self.complexity = complexity
+        self.use_transformer = use_transformer
+
+        # Encoder
+        self.enc_conv1 = self.conv_block(input_channels, complexity)
+        self.enc_conv2 = self.conv_block(complexity, complexity*2)
+        self.enc_conv3 = self.conv_block(complexity*2, complexity*4)
+        self.enc_conv4 = self.conv_block(complexity*4, complexity*8)
+        self.enc_conv5 = self.conv_block(complexity*8, complexity*16)
+        self.enc_conv6 = self.conv_block(complexity*16, complexity*32)
+        self.enc_conv7 = self.conv_block(complexity*32, complexity*64)
+        self.pool = nn.MaxPool2d(2, 2)
+
+        # Transformer
+        if use_transformer:
+            self.pos_encoder = PositionalEncoding(complexity*64)
+            self.transformer_block = TransformerBlock(complexity*64, nhead=2)
+
+        # Decoder
+        self.upconv7 = nn.ConvTranspose2d(complexity*64, complexity*32, 2, stride=2)
+        self.dec_conv7 = self.conv_block(complexity*64, complexity*32)
+        self.upconv6 = nn.ConvTranspose2d(complexity*32, complexity*16, 2, stride=2)
+        self.dec_conv6 = self.conv_block(complexity*32, complexity*16)
+        self.upconv5 = nn.ConvTranspose2d(complexity*16, complexity*8, 2, stride=2)
+        self.dec_conv5 = self.conv_block(complexity*16, complexity*8)
+        self.upconv4 = nn.ConvTranspose2d(complexity*8, complexity*4, 2, stride=2)
+        self.dec_conv4 = self.conv_block(complexity*8, complexity*4)
+        self.upconv3 = nn.ConvTranspose2d(complexity*4, complexity*2, 2, stride=2)
+        self.dec_conv3 = self.conv_block(complexity*4, complexity*2)
+        self.upconv2 = nn.ConvTranspose2d(complexity*2, complexity, 2, stride=2)
+        self.dec_conv2 = self.conv_block(complexity*2, complexity)
+        # self.upconv1 = nn.ConvTranspose2d(complexity, complexity//2, 2, stride=2)
+        self.dec_conv1 = self.conv_block(complexity + input_channels, complexity//2)
+
+        self.final_conv = nn.Conv2d(complexity//2, output_channels, 1)
+
+    def conv_block(self, input_channels, out_channels):
+        return nn.Sequential(
+            nn.Conv2d(input_channels, out_channels, 3, padding=1),
+            nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, 3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
         )
-        self.down1 = nn.Sequential(nn.MaxPool2d(2), ResidualBlock(complexity, complexity*2))
-        self.down2 = nn.Sequential(nn.MaxPool2d(2), ResidualBlock(complexity*2, complexity*4))
-        self.down3 = nn.Sequential(nn.MaxPool2d(2), ResidualBlock(complexity*4, complexity*8))
-        self.down4 = nn.Sequential(nn.MaxPool2d(2), ResidualBlock(complexity*8, complexity*16))
-        self.down5 = nn.Sequential(nn.MaxPool2d(2), ResidualBlock(complexity*16, complexity*32))
-        self.down6 = nn.Sequential(nn.MaxPool2d(2), ResidualBlock(complexity*32, complexity*64))
-        
-        # Bridge
-        self.bridge = nn.Sequential(
-            ResidualBlock(complexity*64, complexity*64),
-            ResidualBlock(complexity*64, complexity*64)
-        )
-        
-        self.up1 = nn.ConvTranspose2d(complexity*64, complexity*32, kernel_size=2, stride=2)
-        self.conv1 = ResidualBlock(complexity*64, complexity*32)
-        self.up2 = nn.ConvTranspose2d(complexity*32, complexity*16, kernel_size=2, stride=2)
-        self.conv2 = ResidualBlock(complexity*32, complexity*16)
-        self.up3 = nn.ConvTranspose2d(complexity*16, complexity*8, kernel_size=2, stride=2)
-        self.conv3 = ResidualBlock(complexity*16, complexity*8)
-        self.up4 = nn.ConvTranspose2d(complexity*8, complexity*4, kernel_size=2, stride=2)
-        self.conv4 = ResidualBlock(complexity*8, complexity*4)
-        self.up5 = nn.ConvTranspose2d(complexity*4, complexity*2, kernel_size=2, stride=2)
-        self.conv5 = ResidualBlock(complexity*4, complexity*2)
-        self.up6 = nn.ConvTranspose2d(complexity*2, complexity, kernel_size=2, stride=2)
-        self.conv6 = ResidualBlock(complexity*2, complexity)
-        
-        self.dec = nn.Conv2d(complexity, output_channels, kernel_size=3, padding=(1, 1))
 
     def forward(self, x):
-        x1 = self.inc(x)
-        x2 = self.down1(x1)
-        x3 = self.down2(x2)
-        x4 = self.down3(x3)
-        x5 = self.down4(x4)
-        x6 = self.down5(x5)
-        x7 = self.down6(x6)
-        
-        # Bridge
-        x7 = self.bridge(x7)
-        
-        x = self.up1(x7)
-        x = torch.cat([x, x6], dim=1)
-        x = self.conv1(x)
-        x = self.up2(x)
-        x = torch.cat([x, x5], dim=1)
-        x = self.conv2(x)
-        x = self.up3(x)
-        x = torch.cat([x, x4], dim=1)
-        x = self.conv3(x)
-        x = self.up4(x)
-        x = torch.cat([x, x3], dim=1)
-        x = self.conv4(x)
-        x = self.up5(x)
-        x = torch.cat([x, x2], dim=1)
-        x = self.conv5(x)
-        x = self.up6(x)
-        x = torch.cat([x, x1], dim=1)
-        x = self.conv6(x)
-        x = self.dec(x)
-        
-        return x
+        # Encoder
+        e1 = self.enc_conv1(x)
+        e2 = self.enc_conv2(self.pool(e1))
+        e3 = self.enc_conv3(self.pool(e2))
+        e4 = self.enc_conv4(self.pool(e3))
+        e5 = self.enc_conv5(self.pool(e4))
+        e6 = self.enc_conv6(self.pool(e5))
+        e7 = self.enc_conv7(self.pool(e6))
+
+        # Transformer
+        if self.use_transformer:
+            b, c, h, w = e7.size()
+            e7 = e7.view(b, c, -1).permute(2, 0, 1)  # (seq, batch, feature)
+            e7 = self.pos_encoder(e7)
+            e7 = self.transformer_block(e7)
+            e7 = e7.permute(1, 2, 0).view(b, c, h, w)
+
+        # Decoder
+        d7 = self.dec_conv7(torch.cat([self.upconv7(e7), e6], 1))
+        d6 = self.dec_conv6(torch.cat([self.upconv6(d7), e5], 1))
+        d5 = self.dec_conv5(torch.cat([self.upconv5(d6), e4], 1))
+        d4 = self.dec_conv4(torch.cat([self.upconv4(d5), e3], 1))
+        d3 = self.dec_conv3(torch.cat([self.upconv3(d4), e2], 1))
+        d2 = self.dec_conv2(torch.cat([self.upconv2(d3), e1], 1))
+        d1 = self.dec_conv1(torch.cat([d2, x], 1))
+        return self.final_conv(d1)
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
 
 class Discriminator(nn.Module):
     def __init__(self, input_channels=2, complexity=64):
