@@ -10,10 +10,11 @@ from torchvision import transforms
 import numpy as np
 
 class DepthEstimationDataset2(Dataset):
-    def __init__(self, root_dir, data_size=0, transform=None, noise_mask_prob=(0.0, 0.00)):
+    def __init__(self, root_dir, data_size=0, transform=None, noise_mask_prob=(0.0, 0.00), z_range=(-0.4, -0.3)):
         self.root_dir = root_dir
         self.data_size = data_size
         self.noise_mask_prob = noise_mask_prob
+        self.z_range = z_range
         # 获取所有以 _image.png 结尾的文件，作为数据集的标识
         self.data_list = [f[:-10] for f in os.listdir(root_dir) if f.endswith('_image.png')]
         self.transform = transform
@@ -69,8 +70,8 @@ class DepthEstimationDataset2(Dataset):
         
         depth_image[mask_image == 0] = -1
         
-        depth_image = depth_image.clamp(-0.4, -0.3)
-        depth_image = (depth_image + 0.4) / 0.1
+        depth_image = depth_image.clamp(self.z_range[0], self.z_range[1])
+        depth_image = (depth_image - self.z_range[0]) / (self.z_range[1] - self.z_range[0])
 
         return image, depth_image, mask_image
 

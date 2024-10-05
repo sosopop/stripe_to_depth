@@ -147,7 +147,7 @@ def train_model(
             supervised_running_loss += loss
             
             # 使用GAN进行半监督微调训练
-            if epoch > 10:  # 开始使用GAN进行训练
+            if epoch > 50:  # 开始使用GAN进行训练
                 generator_loss, discriminator_loss = unsupervised_train(image, depth_pred.detach(), mask_pred.detach(), unlabeled_image, discriminator_model, generator_model, generator_optimizer, criterion_discriminator, discriminator_optimizer)
                 discriminator_running_loss += discriminator_loss
                 generator_running_loss += generator_loss
