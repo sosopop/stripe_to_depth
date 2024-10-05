@@ -20,13 +20,17 @@ class DepthEstimationDataset2(Dataset):
         self.transform = transform
 
     def __len__(self):
-        if self.data_size != 0:
+        if self.data_size == 0:
+            return len(self.data_list)
+        # 如果 data_size 已经是 data_list 长度的整数倍，直接返回
+        if self.data_size % len(self.data_list) == 0:
             return self.data_size
-        return len(self.data_list)
+        # 否则，计算比 data_size 大的最小整数倍
+        return ((self.data_size // len(self.data_list)) + 1) * len(self.data_list)
 
     def __getitem__(self, idx):
         if self.data_size != 0:
-            idx = random.randint(0, len(self.data_list)-1)  # 随机选择一个数据
+            idx = idx % len(self.data_list)  # 计算 idx 在 data_list 长度范围内
         file_base = self.data_list[idx]
         
         # 构建文件路径

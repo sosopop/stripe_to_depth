@@ -147,7 +147,7 @@ def train_model(
             supervised_running_loss += loss
             
             # 使用GAN进行半监督微调训练
-            if epoch > 50:  # 开始使用GAN进行训练
+            if epoch > 30:  # 开始使用GAN进行训练
                 generator_loss, discriminator_loss = unsupervised_train(image, depth_pred.detach(), mask_pred.detach(), unlabeled_image, discriminator_model, generator_model, generator_optimizer, criterion_discriminator, discriminator_optimizer)
                 discriminator_running_loss += discriminator_loss
                 generator_running_loss += generator_loss
@@ -198,8 +198,8 @@ def train_model(
             # 保存当前最优模型
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-            save_model_checkpoint(generator_model, discriminator_model, epoch)  # 保存模型
-            print(f"Best model saved with Validation Loss: {best_val_loss:.10f}")
+                save_model_checkpoint(generator_model, discriminator_model, epoch)  # 保存模型
+                print(f"Best model saved with Validation Loss: {best_val_loss:.10f}")
 
             # 可视化结果
             with torch.no_grad():
@@ -242,7 +242,7 @@ if __name__ == '__main__':
     print(f"Validation set size: {len(val_dataset)}")
 
     # 初始化模型
-    generator_model = UNet(input_channels=1, output_channels=2, complexity=8)
+    generator_model = UNet(input_channels=1, output_channels=2, complexity=4)
     discriminator_model = Discriminator(complexity=4, input_channels=3)
     
     # 获取最新的checkpoint文件
