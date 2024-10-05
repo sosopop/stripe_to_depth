@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from datasets2 import DepthEstimationDataset2 as DepthEstimationDataset
+from datasets import DepthEstimationDataset2 as DepthEstimationDataset
 from model_unet import UNet, Discriminator
 from utils import visualize_sample, load_model_checkpoint, log_cosh_loss
 import os
