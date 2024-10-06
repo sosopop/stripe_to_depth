@@ -10,7 +10,7 @@ from torchvision import transforms
 import numpy as np
 
 class DepthEstimationDataset2(Dataset):
-    def __init__(self, root_dir, data_size=0, transform=None, noise_mask_prob=(0.0, 0.00), z_range=(-0.4, -0.3)):
+    def __init__(self, root_dir, data_size=0, transform=None, noise_mask_prob=(0.0, 0.00), z_range=(-0.4, -0.3), use_data_enhance=False):
         self.root_dir = root_dir
         self.data_size = data_size
         self.noise_mask_prob = noise_mask_prob
@@ -18,6 +18,7 @@ class DepthEstimationDataset2(Dataset):
         # 获取所有以 _image.png 结尾的文件，作为数据集的标识
         self.data_list = [f[:-10] for f in os.listdir(root_dir) if f.endswith('_image.png')]
         self.transform = transform
+        self.use_data_enhance = use_data_enhance
 
     def __len__(self):
         if self.data_size == 0:
@@ -52,8 +53,9 @@ class DepthEstimationDataset2(Dataset):
         depth_image = torch.from_numpy(depth_image).unsqueeze(0).float()  # 转为 PyTorch Tensor，并添加通道维度
 
         # 计算随机偏移量 (可以根据需要启用随机偏移)
-        # offset_y, offset_x = 0, 0  # 此处可以更改为调用 self.get_random_offset 来随机偏移
-        offset_y, offset_x = self.get_random_offset(image, 576, 576)
+        offset_y, offset_x = 0, 0  # 此处可以更改为调用 self.get_random_offset 来随机偏移
+        if self.use_data_enhance:
+            offset_y, offset_x = self.get_random_offset(image, 576, 576)
 
         # 使用相同的偏移量填充 image、depth_image 和 mask_image
         image = self.pad_to_size_with_offset(image, 576, 576, offset_y, offset_x)
@@ -61,7 +63,7 @@ class DepthEstimationDataset2(Dataset):
         mask_image = self.pad_to_size_with_offset(mask_image, 576, 576, offset_y, offset_x)
 
         # 如果设置了数据增强，则应用于 image 和 mask_image (注意：不对 depth_image 做增强)
-        if self.transform:
+        if self.use_data_enhance and self.transform:
             # 合并 image 和 mask_image 进行同步变换
             stack = torch.cat([image, depth_image, mask_image], dim=0)
             stack = self.transform(stack)

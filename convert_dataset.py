@@ -13,10 +13,12 @@ def process_dataset(source_root, target_dir):
     supervised_dir = os.path.join(target_dir, 'supervised_train')
     unsupervised_dir = os.path.join(target_dir, 'unsupervised_train')
     val_dir = os.path.join(target_dir, 'val')
+    test_dir = os.path.join(target_dir, 'test')
     
     os.makedirs(supervised_dir, exist_ok=True)
     os.makedirs(unsupervised_dir, exist_ok=True)
     os.makedirs(val_dir, exist_ok=True)
+    os.makedirs(test_dir, exist_ok=True)
     
     # 用于生成连续的文件编号
     file_counter = 1
@@ -36,12 +38,14 @@ def process_dataset(source_root, target_dir):
     
     # 根据比例分配数据
     total_dirs = len(directories)
-    supervised_count = (total_dirs * 2) // 5  # 2/5
-    unsupervised_count = (total_dirs * 2) // 5  # 2/5
+    supervised_count = (total_dirs * 2) // 6  # 2/5
+    unsupervised_count = (total_dirs * 2) // 6  # 2/5
+    test_count = total_dirs // 6  # 1/5
     val_count = total_dirs - supervised_count - unsupervised_count  # 剩余作为 val
     
     supervised_dirs = directories[:supervised_count]
     unsupervised_dirs = directories[supervised_count:supervised_count + unsupervised_count]
+    test_dirs = directories[supervised_count + unsupervised_count:supervised_count + unsupervised_count + test_count]
     val_dirs = directories[supervised_count + unsupervised_count:]
     
     # 处理函数
@@ -88,16 +92,6 @@ def process_dataset(source_root, target_dir):
             z_data_with_border = cv2.copyMakeBorder(z_data, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[-1])
             tiff.imwrite(target_z_path, z_data_with_border)
             
-            # 处理掩码数据
-            # mask_data = pd.read_csv(mask_path, header=None).values
-            # mask_data = (mask_data > 0).astype(np.uint8) * 255  # 二值化掩码
-            
-            # # 为掩码添加黑边
-            # mask_with_border = cv2.copyMakeBorder(mask_data, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[0])
-            
-            # # 保存扩展后的掩码
-            # cv2.imwrite(target_mask_path, mask_with_border)
-            
             # 归一化 z_data 并保存深度图像
             z_data_with_border[z_data_with_border < -0.4] = -1  # 过滤掉异常值
             z_data_with_border[z_data_with_border > -0.3] = -1  # 过滤掉异常值
@@ -109,7 +103,6 @@ def process_dataset(source_root, target_dir):
             
             # 保存深度图像
             cv2.imwrite(target_depth_image_path, z_data_with_border)
-            
             
             mask_data = z_data_with_border
             mask_data[z_data_with_border > 0] = 255  # 掩码中标记为 255 的像素对应于深度图像中大于 0 的像素
@@ -123,9 +116,9 @@ def process_dataset(source_root, target_dir):
     
     # 使用 tqdm 添加进度条并处理数据
     for dir_type, sub_dirs, sub_dir_name in zip(
-        ["Supervised", "Unsupervised", "Validation"],
-        [supervised_dirs, unsupervised_dirs, val_dirs],
-        [supervised_dir, unsupervised_dir, val_dir]
+        ["Supervised", "Unsupervised", "Validation", "Test"],
+        [supervised_dirs, unsupervised_dirs, val_dirs, test_dirs],
+        [supervised_dir, unsupervised_dir, val_dir, test_dir]
     ):
         print(f"开始处理 {dir_type} 数据...")
         for root in tqdm(sub_dirs, desc=f"Processing {dir_type}"):

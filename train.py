@@ -39,7 +39,7 @@ def supervised_train(image, depth_gt, mask_gt, generator_model, generator_optimi
 # 使用GAN进行半监督微调训练
 def unsupervised_train(
     labeled_image, labeled_depth_pred, labeled_mask_pred, unlabeled_image,
-    discriminator_model, generator_model, generator_optimizer, criterion_discriminator, discriminator_optimizer):
+    discriminator_model, generator_model, generator_optimizer, criterion_discriminator, discriminator_optimizer, use_data_enhance):
     
     # 如果不使用GAN进行训练，则直接返回 0.0
     # return 0.0, 0.0
@@ -53,7 +53,10 @@ def unsupervised_train(
     unlabeled_mask_pred = output[:, 1:2, :, :]   # 获取第二个通道，掩码图
 
     # 将有标签数据和预测结果拼接.
-    noise_weight = 0.8  # 噪声权重
+    noise_weight = 0.0  # 噪声权重
+    if use_data_enhance:
+        noise_weight = 0.8  # 加入噪声权重
+        
     labeled_image_noise = labeled_image + torch.randn_like(labeled_image) * noise_weight  # 加入噪声
     labeled_pred_noise = labeled_depth_pred + torch.randn_like(labeled_image) * noise_weight  # 加入噪声
     labeled_input = torch.cat((labeled_image_noise, labeled_mask_pred, labeled_pred_noise), dim=1)
@@ -111,7 +114,7 @@ def train_model(
     generator_model, discriminator_model, 
     labeled_train_dataloader, unlabeled_train_dataloader, val_dataloader, 
     criterion_depth, criterion_mask, criterion_discriminator, 
-    optimizer, discriminator_optimizer, generator_optimizer, num_epochs=25, start_epoch = 0, device='cuda'):
+    optimizer, discriminator_optimizer, generator_optimizer, num_epochs=25, start_epoch = 0, device='cuda', use_data_enhance = False):
     
     writer = SummaryWriter(log_dir='runs/gan_training')
     
@@ -148,7 +151,7 @@ def train_model(
             
             # 使用GAN进行半监督微调训练
             if epoch > 30:  # 开始使用GAN进行训练
-                generator_loss, discriminator_loss = unsupervised_train(image, depth_pred.detach(), mask_pred.detach(), unlabeled_image, discriminator_model, generator_model, generator_optimizer, criterion_discriminator, discriminator_optimizer)
+                generator_loss, discriminator_loss = unsupervised_train(image, depth_pred.detach(), mask_pred.detach(), unlabeled_image, discriminator_model, generator_model, generator_optimizer, criterion_discriminator, discriminator_optimizer, use_data_enhance)
                 discriminator_running_loss += discriminator_loss
                 generator_running_loss += generator_loss
             else:
@@ -170,6 +173,8 @@ def train_model(
         if (epoch + 1) % 1 == 0:
             generator_model.eval()  # 切换到评估模式
             val_running_loss = 0.0
+            val_running_loss_depth = 0.0
+            val_running_loss_mask = 0.0
             with torch.no_grad():
                 for image, depth_gt, mask_gt in val_dataloader:
                     image = image.to(device)
@@ -189,11 +194,17 @@ def train_model(
                     loss = loss_depth * 0.9 + loss_mask * 0.1
 
                     val_running_loss += loss.item()
+                    val_running_loss_depth += loss_depth.item()
+                    val_running_loss_mask += loss_mask.item()
                     
             val_loss = val_running_loss / len(val_dataloader)
-            print(f'Epoch {epoch + 1}/{num_epochs}, Validation Loss: {val_loss:.10f}')
+            val_loss_depth = val_running_loss_depth / len(val_dataloader)
+            val_loss_mask = val_running_loss_mask / len(val_dataloader)
+            print(f'Epoch {epoch + 1}/{num_epochs}, Validation Loss: {val_loss:.10f}, Depth Loss: {val_loss_depth:.10f}, Mask Loss: {val_loss_mask:.10f}')
 
             writer.add_scalar('Loss/V', val_loss, epoch)
+            writer.add_scalar('Loss/V_DEPTH', val_loss_depth, epoch)
+            writer.add_scalar('Loss/V_MASK', val_loss_mask, epoch)
             
             # 保存当前最优模型
             if val_loss < best_val_loss:
@@ -223,19 +234,22 @@ def train_model(
 if __name__ == '__main__':
     # 加载数据集
     datasets_dir = 'datasets3'
-    transform = transforms.Compose([
-        transforms.RandomHorizontalFlip(p=0.5),  # 随机水平翻转
-        # transforms.RandomVerticalFlip(p=0.5),    # 随机垂直翻转
-        transforms.RandomErasing(p=0.8, scale=(0.07, 0.07), ratio=(0.5, 2), value=0),
-        transforms.RandomErasing(p=0.8, scale=(0.05, 0.05), ratio=(0.5, 2), value=0),
-        transforms.RandomErasing(p=0.8, scale=(0.1, 0.1), ratio=(0.5, 2), value=0)
-    ])
-    labeled_train_dataset = DepthEstimationDataset(root_dir=f'{datasets_dir}/supervised_train', data_size=5000, transform=transform, noise_mask_prob=(0.0, 0.03))
+    use_data_enhance = False
+    transform = transforms.Compose([])
+    if use_data_enhance:
+        transform = transforms.Compose([
+            transforms.RandomHorizontalFlip(p=0.5),  # 随机水平翻转
+            # transforms.RandomVerticalFlip(p=0.5),    # 随机垂直翻转
+            transforms.RandomErasing(p=0.8, scale=(0.07, 0.07), ratio=(0.5, 2), value=0),
+            transforms.RandomErasing(p=0.8, scale=(0.05, 0.05), ratio=(0.5, 2), value=0),
+            transforms.RandomErasing(p=0.8, scale=(0.1, 0.1), ratio=(0.5, 2), value=0)
+        ])
+    labeled_train_dataset = DepthEstimationDataset(root_dir=f'{datasets_dir}/supervised_train', data_size=5000, transform=transform, noise_mask_prob=(0.0, 0.03), use_data_enhance=use_data_enhance)
     labeled_train_dataloader = DataLoader(labeled_train_dataset, batch_size=8, shuffle=True, num_workers=4)
-    unlabeled_train_dataset = DepthEstimationDataset(root_dir=f'{datasets_dir}/unsupervised_train', data_size=5000, transform=transform, noise_mask_prob=(0.0, 0.03))
+    unlabeled_train_dataset = DepthEstimationDataset(root_dir=f'{datasets_dir}/unsupervised_train', data_size=5000, transform=transform, noise_mask_prob=(0.0, 0.03), use_data_enhance=use_data_enhance)
     unlabeled_train_dataloader = DataLoader(unlabeled_train_dataset, batch_size=8, shuffle=True, num_workers=4)
     
-    val_dataset = DepthEstimationDataset(root_dir=f'{datasets_dir}/val')
+    val_dataset = DepthEstimationDataset(root_dir=f'{datasets_dir}/val', use_data_enhance=use_data_enhance)
     val_dataloader = DataLoader(val_dataset, batch_size=2, shuffle=False)
     
     print(f"Supervised training set size: {len(labeled_train_dataset)}, Unsupervised training set size: {len(unlabeled_train_dataset)}")
@@ -278,7 +292,7 @@ if __name__ == '__main__':
         generator_model, discriminator_model, 
         labeled_train_dataloader, unlabeled_train_dataloader, val_dataloader, 
         criterion_depth, criterion_mask, criterion_discriminator, 
-        optimizer, discriminator_optimizer, generator_optimizer, num_epochs=100000, start_epoch=epoch, device='cuda')
+        optimizer, discriminator_optimizer, generator_optimizer, num_epochs=100000, start_epoch=epoch, device='cuda', use_data_enhance=use_data_enhance)
 
     # 保存模型
     torch.save(trained_model.state_dict(), 'depth_estimation_model.pth')
