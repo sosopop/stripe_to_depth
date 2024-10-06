@@ -5,9 +5,6 @@ opencv_python==4.10.0.82
 pandas==2.2.3
 pygame==2.6.0
 PyGLM==2.7.2
-PyOpenGL==3.1.0
 PyOpenGL==3.1.7
 tifffile==2024.9.20
-torch==2.3.0+cu121
-torchvision==0.18.0+cu121
 tqdm==4.66.4
