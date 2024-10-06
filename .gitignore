@@ -3,7 +3,6 @@ __pycache__/*
 masked_grayscale_image.png
 *.pth
 visualizations/*
-readme.txt
 /*.png
 /*.csv
 *.obj
@@ -14,3 +13,4 @@ runs/
 backup/
 validation_samples/*
 mse_images/*
+myenv/
