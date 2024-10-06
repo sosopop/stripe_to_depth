@@ -43,9 +43,6 @@ def validate_model(model, dataloader, criterion_depth, criterion_mask, device='c
                     f"validation_batch{batch_idx}_sample{i}",
                     save_dir="validation_samples"
                 )
-            
-            if batch_idx > 100:
-                break
 
     avg_loss = total_loss / num_samples
     avg_loss_depth = total_loss_depth / num_samples

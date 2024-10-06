@@ -234,7 +234,7 @@ def train_model(
 if __name__ == '__main__':
     # 加载数据集
     datasets_dir = 'datasets3'
-    use_data_enhance = False
+    use_data_enhance = True
     transform = transforms.Compose([])
     if use_data_enhance:
         transform = transforms.Compose([
