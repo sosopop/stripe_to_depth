@@ -242,7 +242,7 @@ if __name__ == '__main__':
     print(f"Validation set size: {len(val_dataset)}")
 
     # 初始化模型
-    generator_model = UNet(input_channels=1, output_channels=2, complexity=4)
+    generator_model = UNet(input_channels=1, output_channels=2, complexity=8, use_transformer=False)
     discriminator_model = Discriminator(complexity=4, input_channels=3)
     
     # 获取最新的checkpoint文件
