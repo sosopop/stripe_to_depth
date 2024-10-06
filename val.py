@@ -60,7 +60,7 @@ if __name__ == '__main__':
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
 
     # 初始化模型
-    generator_model = UNet(input_channels=1, output_channels=2, complexity=8)
+    generator_model = UNet(input_channels=1, output_channels=2, complexity=8, use_transformer=False)
     discriminator_model = Discriminator(complexity=4, input_channels=3)
 
     # 定义损失函数
