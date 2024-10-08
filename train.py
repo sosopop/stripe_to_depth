@@ -27,7 +27,7 @@ def supervised_train(image, depth_gt, mask_gt, generator_model, generator_optimi
     # loss_depth = criterion_depth(depth_mask_pred, depth_mask_gt)
     loss_mask = criterion_mask(mask_pred, mask_gt)
     # loss = loss_depth * 0.4 + loss_depth2 * 10 + loss_mask * 0.1
-    loss = loss_depth * 0.9 + loss_mask * 0.1
+    loss = loss_depth * 0.99 + loss_mask * 0.01
 
     # 反向传播和优化
     loss.backward()
@@ -191,7 +191,8 @@ def train_model(
                     # loss_depth = criterion_depth(depth_pred, depth_gt)
                     loss_depth = criterion_depth(depth_pred, depth_gt)
                     loss_mask = criterion_mask(mask_pred, mask_gt)
-                    loss = loss_depth * 0.9 + loss_mask * 0.1
+                    loss = loss_depth * 0.99 + loss_mask * 0.01
+                    # loss = loss_depth * 0.9 + loss_mask * 0.1
 
                     val_running_loss += loss.item()
                     val_running_loss_depth += loss_depth.item()
