@@ -128,7 +128,7 @@ def main():
     model_high = UNet(output_channels=2, complexity=32)
     
     # 生成一个随机的514x544的单通道图像作为输入
-    input_image = torch.randn(1, 1, 576, 576)
+    input_image = torch.randn(1, 1, 512, 512)
     
     # 对每个模型进行前向传播并打印参数量
     for name, model in [("Low", model_low), ("Medium", model_medium), ("High", model_high)]:

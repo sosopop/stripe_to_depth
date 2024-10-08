@@ -10,11 +10,10 @@ from torchvision import transforms
 import numpy as np
 
 class DepthEstimationDataset2(Dataset):
-    def __init__(self, root_dir, data_size=0, transform=None, noise_mask_prob=(0.0, 0.00), z_range=(-0.4, -0.3), use_data_enhance=False):
+    def __init__(self, root_dir, data_size=0, transform=None, noise_mask_prob=(0.0, 0.00), use_data_enhance=False):
         self.root_dir = root_dir
         self.data_size = data_size
         self.noise_mask_prob = noise_mask_prob
-        self.z_range = z_range
         # 获取所有以 _image.png 结尾的文件，作为数据集的标识
         self.data_list = [f[:-10] for f in os.listdir(root_dir) if f.endswith('_image.png')]
         self.transform = transform
@@ -55,12 +54,12 @@ class DepthEstimationDataset2(Dataset):
         # 计算随机偏移量 (可以根据需要启用随机偏移)
         offset_y, offset_x = 0, 0  # 此处可以更改为调用 self.get_random_offset 来随机偏移
         if self.use_data_enhance:
-            offset_y, offset_x = self.get_random_offset(image, 576, 576)
+            offset_y, offset_x = self.get_random_offset(image, 512, 512)
 
         # 使用相同的偏移量填充 image、depth_image 和 mask_image
-        image = self.pad_to_size_with_offset(image, 576, 576, offset_y, offset_x)
-        depth_image = self.pad_to_size_with_offset(depth_image, 576, 576, offset_y, offset_x)
-        mask_image = self.pad_to_size_with_offset(mask_image, 576, 576, offset_y, offset_x)
+        image = self.pad_to_size_with_offset(image, 512, 512, offset_y, offset_x)
+        depth_image = self.pad_to_size_with_offset(depth_image, 512, 512, offset_y, offset_x)
+        mask_image = self.pad_to_size_with_offset(mask_image, 512, 512, offset_y, offset_x)
 
         # 如果设置了数据增强，则应用于 image 和 mask_image (注意：不对 depth_image 做增强)
         if self.use_data_enhance and self.transform:
@@ -74,11 +73,8 @@ class DepthEstimationDataset2(Dataset):
         # mask_image = mask_image * (1 - noise_mask)
         # depth_image = depth_image * (1 - noise_mask)
         
-        depth_image[mask_image == 0] = -1
+        depth_image = depth_image.clamp(0, 1)
         
-        depth_image = depth_image.clamp(self.z_range[0], self.z_range[1])
-        depth_image = (depth_image - self.z_range[0]) / (self.z_range[1] - self.z_range[0])
-
         return image, depth_image, mask_image
 
     def get_random_offset(self, tensor, target_height, target_width):
@@ -108,7 +104,7 @@ class DepthEstimationDataset2(Dataset):
         padding = (offset_x, pad_right - offset_x, offset_y, pad_bottom - offset_y)  # (left, right, top, bottom)
         return F.pad(tensor, padding, "constant", 0)  # 用0填充
 
-    def make_noise_mask(self, p=(0.0, 0.03), size=(576, 576)):
+    def make_noise_mask(self, p=(0.0, 0.03), size=(512, 512)):
         """
         创建一个随机噪声掩膜。
 

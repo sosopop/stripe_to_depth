@@ -1,6 +1,6 @@
 matplotlib==3.9.2
 noise==1.2.2
-numpy==2.1.2
+numpy==1.26.4
 opencv_python==4.10.0.82
 pandas==2.2.3
 pygame==2.6.0

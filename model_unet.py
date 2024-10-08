@@ -192,8 +192,8 @@ def main():
     
     discriminator = Discriminator(complexity=8)
     
-    # 生成一个随机的576x576的单通道图像作为输入
-    input_image = torch.randn(5, 1, 576, 576)
+    # 生成一个随机的512x512的单通道图像作为输入
+    input_image = torch.randn(5, 1, 512, 512)
     
     # 对每个模型进行前向传播并打印参数量
     for name, model in [("Low", model_low), ("Medium", model_medium), ("High", model_high)]:
@@ -204,7 +204,7 @@ def main():
         print(f"  Total parameters: {count_parameters(model):,}")
         print()
         
-        output = discriminator(torch.randn(5, 2, 576, 576))
+        output = discriminator(torch.randn(5, 2, 512, 512))
         print(f"  Discriminator output shape: {output.shape}")
         print(f"  Total parameters: {count_parameters(discriminator):,}")
         print()

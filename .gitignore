@@ -14,3 +14,4 @@ backup/
 validation_samples/*
 mse_images/*
 myenv/
+.idea/

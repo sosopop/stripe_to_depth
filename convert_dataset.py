@@ -2,13 +2,11 @@ import os
 import shutil
 import cv2
 import numpy as np
-import pandas as pd
-import tifffile as tiff
-from pathlib import Path
 from tqdm import tqdm
 import random
+import tifffile as tiff
 
-def process_dataset(source_root, target_dir):
+def process_dataset(source_root, target_dir, supervised_ratio, unsupervised_ratio, test_ratio, val_ratio):
     # 确保目标目录和子目录存在
     supervised_dir = os.path.join(target_dir, 'supervised_train')
     unsupervised_dir = os.path.join(target_dir, 'unsupervised_train')
@@ -23,92 +21,67 @@ def process_dataset(source_root, target_dir):
     # 用于生成连续的文件编号
     file_counter = 1
     
-    # 目标图像的尺寸
-    target_size = (576, 576)
-    
     # 收集所有满足条件的目录
     directories = []
     
     for root, dirs, files in os.walk(source_root):
-        if '1.png' in files and 'z.csv' in files and 'mask.csv' in files:
+        if 'f.png' in files and 'z.png' in files and 'm.png' in files:
             directories.append(root)
     
     # 数据洗牌
     random.shuffle(directories)
     
-    # 根据比例分配数据
+    # 总数据量
     total_dirs = len(directories)
-    supervised_count = (total_dirs * 2) // 6  # 2/5
-    unsupervised_count = (total_dirs * 2) // 6  # 2/5
-    test_count = total_dirs // 6  # 1/5
-    val_count = total_dirs - supervised_count - unsupervised_count  # 剩余作为 val
+
+    # 确保比例和为1
+    assert abs(supervised_ratio + unsupervised_ratio + test_ratio + val_ratio - 1.0) < 1e-6, "划分比例之和必须为1"
+
+    # 根据外部传入的比例分配数据
+    supervised_count = int(total_dirs * supervised_ratio)
+    unsupervised_count = int(total_dirs * unsupervised_ratio)
+    test_count = int(total_dirs * test_ratio)
+    val_count = total_dirs - supervised_count - unsupervised_count - test_count  # 剩余作为 val
     
     supervised_dirs = directories[:supervised_count]
     unsupervised_dirs = directories[supervised_count:supervised_count + unsupervised_count]
     test_dirs = directories[supervised_count + unsupervised_count:supervised_count + unsupervised_count + test_count]
-    val_dirs = directories[supervised_count + unsupervised_count:]
+    val_dirs = directories[supervised_count + unsupervised_count + test_count:]
     
-    # 处理函数
+    # 处理函数：将图像直接拷贝到目标文件夹，并处理z.png归一化
     def process_and_save_data(root, target_sub_dir):
         nonlocal file_counter
-        # if root.find('42_') != -1:  # 过滤掉 42_ 开头的文件夹
-        #     return
-        # 构建源文件路径
-        image_path = os.path.join(root, '1.png')
-        z_path = os.path.join(root, 'z.csv')
-        mask_path = os.path.join(root, 'mask.csv')
-        
-        # 生成新的文件名（使用8位数字，从00000001开始）
+        # 使用8位数字作为文件名前缀
         base_name = f'{file_counter:08d}'
         
-        # 构建目标文件路径
-        target_image_path = os.path.join(target_sub_dir, f'{base_name}_image.png')
-        target_mask_path = os.path.join(target_sub_dir, f'{base_name}_mask.png')
-        target_z_path = os.path.join(target_sub_dir, f'{base_name}_z.tiff')
-        target_depth_image_path = os.path.join(target_sub_dir, f'{base_name}_depth.png')
+        # 构建源文件路径
+        image_path = os.path.join(root, 'f.png')
+        z_path = os.path.join(root, 'z.png')
+        mask_path = os.path.join(root, 'm.png')
         
         try:
-            # 复制并处理图像文件
-            image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+            # 生成目标文件路径，使用新的命名方式
+            target_image_path = os.path.join(target_sub_dir, f'{base_name}_image.png')
+            target_mask_path = os.path.join(target_sub_dir, f'{base_name}_mask.png')
+            target_z_path = os.path.join(target_sub_dir, f'{base_name}_z.tiff')
+            target_depth_image_path = os.path.join(target_sub_dir, f'{base_name}_depth.png')
             
-            # 获取原始图像的尺寸
-            original_height, original_width = image.shape[:2]
+            # 拷贝图像文件
+            shutil.copyfile(image_path, target_image_path)
+            shutil.copyfile(mask_path, target_mask_path)
+            shutil.copyfile(z_path, target_depth_image_path)
             
-            # 计算需要扩展的边缘大小
-            top = (target_size[1] - original_height) // 2
-            bottom = target_size[1] - original_height - top
-            left = (target_size[0] - original_width) // 2
-            right = target_size[0] - original_width - left
-            
-            # 添加黑边扩展图像
-            image_with_border = cv2.copyMakeBorder(image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[0])
-            
-            # 保存扩展后的图像
-            cv2.imwrite(target_image_path, image_with_border)
-            
-            # 处理深度图数据
-            z_data = pd.read_csv(z_path, header=None).values
-            z_data = z_data.astype(np.float32)  # 确保数据类型为32位浮点数
-            z_data_with_border = cv2.copyMakeBorder(z_data, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[-1])
-            tiff.imwrite(target_z_path, z_data_with_border)
-            
-            # 归一化 z_data 并保存深度图像
-            z_data_with_border[z_data_with_border < -0.4] = -1  # 过滤掉异常值
-            z_data_with_border[z_data_with_border > -0.3] = -1  # 过滤掉异常值
-            z_data_with_border[image_with_border<2] = -1
-            z_data_with_border = np.clip(z_data_with_border, -0.4, -0.3)
-            min_z = z_data_with_border[z_data_with_border != -0.4].min()
-            max_z = z_data_with_border[z_data_with_border != -0.4].max()
-            z_data_with_border = ((np.clip(z_data_with_border, min_z, max_z) - min_z) / (max_z - min_z) * 255).astype(np.uint8)
-            
-            # 保存深度图像
-            cv2.imwrite(target_depth_image_path, z_data_with_border)
-            
-            mask_data = z_data_with_border
-            mask_data[z_data_with_border > 0] = 255  # 掩码中标记为 255 的像素对应于深度图像中大于 0 的像素
-            # 保存掩码
-            cv2.imwrite(target_mask_path, mask_data)
-            
+            # 加载并处理深度图像z.png
+            z_image = cv2.imread(z_path, cv2.IMREAD_UNCHANGED)
+            if z_image is not None:
+                # 使用简单的除以255归一化
+                z_image_normalized = z_image / 255.0
+                z_image_normalized = z_image_normalized.astype(np.float32)
+                # 将归一化的z图像保存为tiff文件
+                tiff.imwrite(target_z_path, z_image_normalized)
+            else:
+                print(f"跳过无效的深度图像 {root}")
+                
             file_counter += 1
             
         except Exception as e:
@@ -128,7 +101,13 @@ def process_dataset(source_root, target_dir):
 
 # 使用示例
 if __name__ == "__main__":
-    source_root = r"C:\Users\mengchao\Downloads\dataset"  # 替换为您的源数据集路径
-    target_dir = r"D:\code\stripe_to_depth\datasets4"  # 替换为您的目标数据集路径
+    source_root = r"D:\code\stripe_to_depth\backup\test"  # 替换为您的源数据集路径
+    target_dir = r"datasets3"  # 替换为您的目标数据集路径
     
-    process_dataset(source_root, target_dir)
+    # 从外部传入的划分比例
+    supervised_ratio = 0.4  # 40%
+    unsupervised_ratio = 0.4  # 40%
+    test_ratio = 0.1  # 10%
+    val_ratio = 0.1  # 10%
+    
+    process_dataset(source_root, target_dir, supervised_ratio, unsupervised_ratio, test_ratio, val_ratio)
