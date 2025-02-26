@@ -4,8 +4,8 @@
 
 本项目实现了一个基于深度学习的单目深度估计系统，能够从单张RGB图像中预测深度图和有效区域掩码。该系统采用结合U-Net和Transformer的混合架构，并引入GAN进行半监督学习，有效解决了深度估计中的数据稀缺问题。
 
-![demo](https://github.com/sosopop/deepcalc/raw/main/assets/demo1.jpg) 
-![demo](https://github.com/sosopop/deepcalc/raw/main/assets/demo2.jpg) 
+![demo](https://github.com/sosopop/stripe_to_depth/raw/main/assets/demo1.jpg) 
+![demo](https://github.com/sosopop/stripe_to_depth/raw/main/assets/demo2.jpg) 
 
 ## 项目特点
 
@@ -27,7 +27,7 @@
 - 7层解码器网络，通过跳跃连接恢复空间细节
 - 双通道输出：深度图和掩码图
 
-![unet](https://github.com/sosopop/deepcalc/raw/main/assets/unet.png) 
+![unet](https://github.com/sosopop/stripe_to_depth/raw/main/assets/unet.png) 
 
 ### 判别器
 
@@ -38,7 +38,7 @@
 - 池化层和BatchNorm层，加速收敛
 - 最终通过全连接层输出真假判别结果
 
-![discriminator](https://github.com/sosopop/deepcalc/raw/main/assets/discriminator.png) 
+![discriminator](https://github.com/sosopop/stripe_to_depth/raw/main/assets/discriminator.png) 
 
 ## 训练策略
 
@@ -53,7 +53,7 @@
    - 判别器学习区分真实和生成的深度图
    - 生成器通过对抗学习进一步优化深度估计
 
-![架构流程图](https://github.com/sosopop/deepcalc/raw/main/assets/architecture.png) 
+![架构流程图](https://github.com/sosopop/stripe_to_depth/raw/main/assets/architecture.png) 
 
 ## 数据增强技术
 
