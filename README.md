@@ -4,8 +4,8 @@
 
 本项目实现了一个基于深度学习的单目深度估计系统，能够从单张RGB图像中预测深度图和有效区域掩码。该系统采用结合U-Net和Transformer的混合架构，并引入GAN进行半监督学习，有效解决了深度估计中的数据稀缺问题。
 
-![demo](https://github.com/sosopop/deepcalc/raw/main/assets/demo1.png) 
-![demo](https://github.com/sosopop/deepcalc/raw/main/assets/demo2.png) 
+![demo](https://github.com/sosopop/deepcalc/raw/main/assets/demo1.jpg) 
+![demo](https://github.com/sosopop/deepcalc/raw/main/assets/demo2.jpg) 
 
 ## 项目特点
 
